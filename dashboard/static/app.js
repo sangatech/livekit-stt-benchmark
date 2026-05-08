@@ -7,6 +7,10 @@ const state = {
   events: [],
   turns: [],
   callWerSummary: null,
+  callReferenceTranscript: "",
+  callProviderTranscripts: {},
+  callProviderSegments: {},
+  callProviderWer: {},
   allCallsWer: null,
   referenceError: "",
   eventKeys: new Set(),
@@ -135,6 +139,10 @@ function resetSelectedState() {
   state.events = [];
   state.turns = [];
   state.callWerSummary = null;
+  state.callReferenceTranscript = "";
+  state.callProviderTranscripts = {};
+  state.callProviderSegments = {};
+  state.callProviderWer = {};
   state.referenceError = "";
   state.eventKeys = new Set();
   document.getElementById("timeline").innerHTML = "";
@@ -143,6 +151,7 @@ function resetSelectedState() {
   renderProviderStats();
   renderSelectedCallSummary();
   renderQualityComparison();
+  renderCallReference();
   renderReferenceTurns();
   renderAllCallsWer();
   renderChart();
@@ -154,13 +163,22 @@ async function loadReferenceTurns(callId) {
     const detail = await fetchJson(`/api/benchmark/calls/${encodeURIComponent(callId)}/turns`);
     state.turns = detail.turns || [];
     state.callWerSummary = detail.wer_summary || null;
+    state.callReferenceTranscript = detail.call_reference_transcript || "";
+    state.callProviderTranscripts = detail.call_provider_transcripts || {};
+    state.callProviderSegments = detail.call_provider_segments || {};
+    state.callProviderWer = detail.call_provider_wer || {};
     state.referenceError = "";
   } catch (error) {
     state.turns = [];
     state.callWerSummary = null;
+    state.callReferenceTranscript = "";
+    state.callProviderTranscripts = {};
+    state.callProviderSegments = {};
+    state.callProviderWer = {};
     state.referenceError = error.message;
   }
   renderQualityComparison();
+  renderCallReference();
   renderReferenceTurns();
 }
 
@@ -290,15 +308,14 @@ function renderSelectedCallSummary() {
 function renderQualityComparison() {
   const deepgram = state.providers.deepgram;
   const speechmatics = state.providers.speechmatics;
-  const callWer = state.callWerSummary?.providers || {};
   const dgRewriteRate = rewriteRate(deepgram);
   const smRewriteRate = rewriteRate(speechmatics);
   const latencyWinner = providerWithLowerValue(deepgram?.avg_final_latency_ms, speechmatics?.avg_final_latency_ms);
   const stabilityWinner = providerWithHigherValue(deepgram?.transcript_stability, speechmatics?.transcript_stability);
 
   document.getElementById("qualityComparison").innerHTML = `
-    ${comparisonTile("Deepgram Call WER", formatPercent(callWer.deepgram?.wer), `${formatCount(callWer.deepgram?.turns)} reviewed turns`, "Deepgram word error rate against saved human reference transcripts for this call.")}
-    ${comparisonTile("Speechmatics Call WER", formatPercent(callWer.speechmatics?.wer), `${formatCount(callWer.speechmatics?.turns)} reviewed turns`, "Speechmatics word error rate against saved human reference transcripts for this call.")}
+    ${comparisonTile("Deepgram Call WER", formatPercent(state.callProviderWer.deepgram?.wer), `${formatCount(state.callProviderSegments.deepgram)} final segments`, "Deepgram word error rate against the saved whole-call human reference transcript.")}
+    ${comparisonTile("Speechmatics Call WER", formatPercent(state.callProviderWer.speechmatics?.wer), `${formatCount(state.callProviderSegments.speechmatics)} final segments`, "Speechmatics word error rate against the saved whole-call human reference transcript.")}
     ${comparisonTile("Latency Winner", latencyWinner, `${formatMs(deepgram?.avg_final_latency_ms)} vs ${formatMs(speechmatics?.avg_final_latency_ms)}`, "Compares average elapsed transcript event time for Deepgram and Speechmatics in this call. Lower is treated as faster.")}
     ${comparisonTile("Stability Winner", stabilityWinner, `${formatPercent(deepgram?.transcript_stability)} vs ${formatPercent(speechmatics?.transcript_stability)}`, "Compares how often partial transcripts changed. Higher stability means fewer partial rewrites.")}
     ${comparisonTile("Deepgram Streaming", streamingSummary(deepgram), `rewrite rate ${formatPercent(dgRewriteRate)}`, "Deepgram streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.")}
@@ -324,6 +341,32 @@ function renderAllCallsWer() {
   `;
 }
 
+function renderCallReference() {
+  const container = document.getElementById("callReference");
+  if (!state.selectedCallId || state.referenceError) {
+    container.innerHTML = "";
+    return;
+  }
+  container.innerHTML = `
+    <div class="rounded border border-zinc-800 bg-zinc-950 p-3">
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div class="font-medium">Call-Level Reference</div>
+        <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
+          <span>Deepgram finals ${formatCount(state.callProviderSegments.deepgram)}</span>
+          <span>Speechmatics finals ${formatCount(state.callProviderSegments.speechmatics)}</span>
+        </div>
+      </div>
+      <label class="mb-1 block text-xs uppercase text-zinc-500" for="call-reference-input">Human Reference</label>
+      <textarea id="call-reference-input" class="min-h-28 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100">${escapeHtml(state.callReferenceTranscript || "")}</textarea>
+      <div class="mt-2 flex items-center justify-between gap-3">
+        <div class="text-xs text-zinc-500">Use the full correct caller transcript for this call. WER is calculated against concatenated final transcripts.</div>
+        <button id="save-call-reference" class="rounded bg-sky-700 px-3 py-1 text-xs font-medium text-white hover:bg-sky-600">Save Call Reference</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("save-call-reference").addEventListener("click", saveCallReference);
+}
+
 function renderReferenceTurns() {
   const container = document.getElementById("referenceTurns");
   if (!state.selectedCallId) {
@@ -335,66 +378,56 @@ function renderReferenceTurns() {
     return;
   }
   if (!state.turns.length) {
-    container.innerHTML = `<div class="text-zinc-500">No final transcript turns yet.</div>`;
+    container.innerHTML = `<div class="text-zinc-500">No final transcript segments yet.</div>`;
     return;
   }
-  container.innerHTML = state.turns.map((turn) => referenceTurnCard(turn)).join("");
-  container.querySelectorAll(".save-reference").forEach((button) => {
-    button.addEventListener("click", () => saveReference(Number(button.dataset.turnIndex)));
-  });
+  container.innerHTML = `
+    <div class="grid gap-3 md:grid-cols-2">
+      ${providerSegmentsCard("deepgram")}
+      ${providerSegmentsCard("speechmatics")}
+    </div>
+  `;
 }
 
-function referenceTurnCard(turn) {
-  const transcripts = turn.transcripts || {};
-  const providerWer = turn.provider_wer || {};
+function providerSegmentsCard(provider) {
+  const segments = state.turns
+    .map((turn) => turn.transcripts?.[provider])
+    .filter((transcript) => transcript && transcript.trim());
   return `
     <div class="rounded border border-zinc-800 bg-zinc-950 p-3">
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div class="font-medium">Turn ${Number(turn.turn_index) + 1}</div>
-        <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
-          <span>Deepgram WER ${formatPercent(providerWer.deepgram?.wer)}</span>
-          <span>Speechmatics WER ${formatPercent(providerWer.speechmatics?.wer)}</span>
-        </div>
+      <div class="mb-2 flex items-center justify-between">
+        <div class="font-medium">${escapeHtml(provider)}</div>
+        <div class="text-xs text-zinc-400">${segments.length} final segments</div>
       </div>
-      <div class="mb-3 grid gap-3 md:grid-cols-2">
-        <div>
-          <div class="mb-1 text-xs uppercase text-sky-300">Deepgram</div>
-          <div class="min-h-20 rounded bg-black/30 p-2 leading-6">${escapeHtml(transcripts.deepgram || "")}</div>
-        </div>
-        <div>
-          <div class="mb-1 text-xs uppercase text-amber-300">Speechmatics</div>
-          <div class="min-h-20 rounded bg-black/30 p-2 leading-6">${escapeHtml(transcripts.speechmatics || "")}</div>
-        </div>
-      </div>
-      <label class="mb-1 block text-xs uppercase text-zinc-500" for="reference-${turn.turn_index}">Human Reference</label>
-      <textarea id="reference-${turn.turn_index}" class="reference-input min-h-20 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100" data-turn-index="${turn.turn_index}">${escapeHtml(turn.reference_transcript || "")}</textarea>
-      <div class="mt-2 flex items-center justify-between gap-3">
-        <div class="text-xs text-zinc-500">${referenceHint(turn)}</div>
-        <button class="save-reference rounded bg-sky-700 px-3 py-1 text-xs font-medium text-white hover:bg-sky-600" data-turn-index="${turn.turn_index}">Save Reference</button>
+      <div class="space-y-2">
+        ${segments.map((segment, index) => `
+          <div class="rounded bg-black/30 p-2">
+            <div class="mb-1 text-xs text-zinc-500">Final ${index + 1}</div>
+            <div class="leading-6">${escapeHtml(segment)}</div>
+          </div>
+        `).join("") || `<div class="text-zinc-500">No final segments</div>`}
       </div>
     </div>
   `;
 }
 
-function referenceHint(turn) {
-  const reference = String(turn.reference_transcript || "").trim();
-  if (!reference) return "Enter the correct text the caller spoke.";
-  const providerWer = turn.provider_wer || {};
-  return `Saved. Deepgram edits ${formatCount(providerWer.deepgram?.edit_distance)}, Speechmatics edits ${formatCount(providerWer.speechmatics?.edit_distance)}.`;
-}
-
-async function saveReference(turnIndex) {
-  const input = document.querySelector(`.reference-input[data-turn-index="${turnIndex}"]`);
+async function saveCallReference() {
+  const input = document.getElementById("call-reference-input");
   const reference = input ? input.value : "";
-  const detail = await fetchJson(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/turns/${turnIndex}/reference`, {
+  const detail = await fetchJson(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/reference`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reference_transcript: reference }),
   });
   state.turns = detail.turns || [];
   state.callWerSummary = detail.wer_summary || null;
+  state.callReferenceTranscript = detail.call_reference_transcript || "";
+  state.callProviderTranscripts = detail.call_provider_transcripts || {};
+  state.callProviderSegments = detail.call_provider_segments || {};
+  state.callProviderWer = detail.call_provider_wer || {};
   state.referenceError = "";
   renderQualityComparison();
+  renderCallReference();
   renderReferenceTurns();
   await loadAllCallsWer();
 }

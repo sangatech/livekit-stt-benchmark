@@ -328,14 +328,15 @@ STT_SHADOW_PROVIDER=speechmatics
 ## Human Reference WER
 
 True WER requires a human reference transcript. Open a call in the dashboard,
-review each finalized turn, type what the caller actually said in the Human
-Reference WER section, and save it.
+type the full correct caller transcript in the Human Reference WER section, and
+save it. Provider final transcripts are concatenated before WER is calculated,
+so different final segmentation does not corrupt call-level WER.
 
 After references are saved, the dashboard shows:
 
-- Per-turn WER for Deepgram and Speechmatics
 - Per-call WER for Deepgram and Speechmatics
 - All-calls aggregate WER for Deepgram and Speechmatics
+- Final segment counts and final segment text for each provider
 
 ## Docker Option
 

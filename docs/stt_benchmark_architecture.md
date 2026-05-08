@@ -53,10 +53,12 @@ The shadow stream is silent and only feeds benchmark storage/UI.
 
 ## Human Reference WER
 
-Final transcripts are paired by provider final-turn order. A reviewer enters
-the human reference transcript for each turn in the dashboard. WER is then
-computed separately for each provider against that saved reference transcript,
-and aggregate WER is computed across all reviewed turns.
+Final transcripts are concatenated per provider at call level. A reviewer
+enters the full human reference transcript for the call in the dashboard. WER
+is then computed separately for each provider against that saved reference
+transcript, and aggregate WER is computed across all reviewed calls. The
+dashboard also shows final segment counts and final segment text per provider
+so segmentation differences are visible.
 
 ## Modes
 

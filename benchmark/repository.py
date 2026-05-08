@@ -128,10 +128,20 @@ class BenchmarkRepository:
                 for reference in session.query(BenchmarkReferenceTranscript).filter_by(call_id_fk=call.id).all()
             }
             turns = _build_turns(events, references)
+            call_reference = references.get(-1, "")
+            provider_transcripts = _call_level_transcripts(events)
+            call_level_wer = _provider_wer(call_reference, provider_transcripts)
             return {
                 "call_id": call.call_id,
                 "room_id": call.room_id,
                 "turns": turns,
+                "call_reference_transcript": call_reference,
+                "call_provider_transcripts": provider_transcripts,
+                "call_provider_segments": {
+                    provider: len([event for event in events if event.provider == provider])
+                    for provider in sorted({event.provider for event in events})
+                },
+                "call_provider_wer": call_level_wer,
                 "wer_summary": _wer_summary(turns),
             }
 
@@ -161,6 +171,13 @@ class BenchmarkRepository:
             raise ValueError(f"call_id not found: {call_id}")
         return detail
 
+    def save_call_reference_transcript(self, *, call_id: str, reference_transcript: str) -> dict[str, object]:
+        return self.save_reference_transcript(
+            call_id=call_id,
+            turn_index=-1,
+            reference_transcript=reference_transcript,
+        )
+
     def wer_summary(self) -> dict[str, object]:
         provider_totals: dict[str, dict[str, float]] = {}
         reviewed_turns = 0
@@ -171,22 +188,21 @@ class BenchmarkRepository:
                 detail = self.call_turns(call.call_id)
                 if detail is None:
                     continue
-                for turn in detail["turns"]:
-                    reference = str(turn.get("reference_transcript") or "").strip()
-                    if not reference:
+                reference = str(detail.get("call_reference_transcript") or "").strip()
+                if not reference:
+                    continue
+                reviewed_turns += 1
+                reviewed_calls.add(call.call_id)
+                for provider, stats in detail.get("call_provider_wer", {}).items():
+                    if stats.get("wer") is None:
                         continue
-                    reviewed_turns += 1
-                    reviewed_calls.add(call.call_id)
-                    for provider, stats in turn.get("provider_wer", {}).items():
-                        if stats.get("wer") is None:
-                            continue
-                        totals = provider_totals.setdefault(
-                            provider,
-                            {"edit_distance": 0.0, "reference_words": 0.0, "turns": 0.0},
-                        )
-                        totals["edit_distance"] += float(stats.get("edit_distance") or 0)
-                        totals["reference_words"] += float(stats.get("reference_words") or 0)
-                        totals["turns"] += 1.0
+                    totals = provider_totals.setdefault(
+                        provider,
+                        {"edit_distance": 0.0, "reference_words": 0.0, "turns": 0.0},
+                    )
+                    totals["edit_distance"] += float(stats.get("edit_distance") or 0)
+                    totals["reference_words"] += float(stats.get("reference_words") or 0)
+                    totals["turns"] += 1.0
         return {
             "reviewed_calls": len(reviewed_calls),
             "reviewed_turns": reviewed_turns,
@@ -226,6 +242,16 @@ def _build_turns(events: list[BenchmarkTranscriptEvent], references: dict[int, s
             }
         )
     return turns
+
+
+def _call_level_transcripts(events: list[BenchmarkTranscriptEvent]) -> dict[str, str]:
+    by_provider: dict[str, list[BenchmarkTranscriptEvent]] = {}
+    for event in events:
+        by_provider.setdefault(event.provider, []).append(event)
+    return {
+        provider: " ".join(event.transcript.strip() for event in provider_events if event.transcript.strip())
+        for provider, provider_events in by_provider.items()
+    }
 
 
 def _provider_wer(reference: str, provider_transcripts: dict[str, str]) -> dict[str, object]:

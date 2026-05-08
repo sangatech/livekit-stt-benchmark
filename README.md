@@ -211,14 +211,17 @@ Dashboard endpoints:
 ### Human Reference WER
 
 The dashboard includes a Human Reference WER section for the selected call.
-Each finalized turn shows Deepgram and Speechmatics text side by side. Type
-what the caller actually said into the human reference field and save it.
+Type the full correct caller transcript for the call and save it. Provider
+finals are concatenated before WER is calculated, so a provider that splits one
+sentence into two finals can still score correctly at call level.
 
 After a reference is saved, the dashboard calculates:
 
-- Deepgram WER for that turn and call
-- Speechmatics WER for that turn and call
+- Deepgram call-level WER
+- Speechmatics call-level WER
 - Aggregate all-calls WER for each provider
+- Final segment counts per provider, so you can see which provider split the
+  same speech into one, two, or more final segments
 
 Architecture and rollout details are in `docs/stt_benchmark_architecture.md`.
 

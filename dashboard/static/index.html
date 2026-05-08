@@ -73,11 +73,12 @@
             <div class="mb-3 flex items-start justify-between gap-3">
               <div>
                 <h2 class="text-sm font-semibold">Human Reference WER</h2>
-                <p class="mt-1 text-xs text-zinc-500">Type what the caller actually said for each final turn, then save to calculate provider WER.</p>
+                <p class="mt-1 text-xs text-zinc-500">Type the full correct caller transcript for the call. Provider finals below show how each STT split the same speech.</p>
               </div>
               <button id="refreshWer" class="rounded bg-zinc-800 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-700">Refresh</button>
             </div>
             <div id="allCallsWer" class="mb-3 grid gap-3 md:grid-cols-3"></div>
+            <div id="callReference" class="mb-3"></div>
             <div id="referenceTurns" class="space-y-3 text-sm"></div>
           </section>
 

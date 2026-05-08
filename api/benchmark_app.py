@@ -116,6 +116,18 @@ async def save_reference(call_id: str, turn_index: int, payload: dict[str, Any])
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.post("/api/benchmark/calls/{call_id}/reference")
+async def save_call_reference(call_id: str, payload: dict[str, Any]) -> dict[str, object]:
+    reference = str(payload.get("reference_transcript") or "").strip()
+    try:
+        return repository.save_call_reference_transcript(
+            call_id=call_id,
+            reference_transcript=reference,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/benchmark/wer/summary")
 async def wer_summary() -> dict[str, object]:
     return repository.wer_summary()
