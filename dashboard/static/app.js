@@ -232,10 +232,10 @@ function renderSelectedCallSummary() {
     : null;
 
   document.getElementById("selectedCallSummary").innerHTML = `
-    ${summaryTile("Selected Call", call.call_id || "No call selected", call.room_id || "")}
-    ${summaryTile("Deepgram Events", formatCount(deepgram?.events), `${formatCount(deepgram?.final_events)} final`)}
-    ${summaryTile("Speechmatics Events", formatCount(speechmatics?.events), `${formatCount(speechmatics?.final_events)} final`)}
-    ${summaryTile("Avg Delta", formatDelta(delta), "Speechmatics minus Deepgram")}
+    ${summaryTile("Selected Call", call.call_id || "No call selected", call.room_id || "", "The currently selected LiveKit call/session. Click a call on the left to inspect its transcript timeline and provider metrics.")}
+    ${summaryTile("Deepgram Events", formatCount(deepgram?.events), `${formatCount(deepgram?.final_events)} final`, "Total Deepgram transcript events received for this call. Events include partial and final transcript updates.")}
+    ${summaryTile("Speechmatics Events", formatCount(speechmatics?.events), `${formatCount(speechmatics?.final_events)} final`, "Total Speechmatics transcript events received for this call. Events include partial and final transcript updates.")}
+    ${summaryTile("Avg Time Delta", formatDelta(delta), "Speechmatics avg minus Deepgram avg", "Average elapsed event time difference. Positive means Speechmatics events arrived later on average; negative means Speechmatics arrived earlier.")}
   `;
 }
 
@@ -252,34 +252,52 @@ function renderQualityComparison() {
   const stabilityWinner = providerWithHigherValue(deepgram?.transcript_stability, speechmatics?.transcript_stability);
 
   document.getElementById("qualityComparison").innerHTML = `
-    ${comparisonTile("Relative WER", formatPercent(wer), "Deepgram vs Speechmatics disagreement")}
-    ${comparisonTile("Transcript Similarity", formatPercent(similarity), "Higher means providers agree more")}
-    ${comparisonTile("Latency Winner", latencyWinner, `${formatMs(deepgram?.avg_final_latency_ms)} vs ${formatMs(speechmatics?.avg_final_latency_ms)}`)}
-    ${comparisonTile("Stability Winner", stabilityWinner, `${formatPercent(deepgram?.transcript_stability)} vs ${formatPercent(speechmatics?.transcript_stability)}`)}
-    ${comparisonTile("Deepgram Streaming", streamingSummary(deepgram), `rewrite rate ${formatPercent(dgRewriteRate)}`)}
-    ${comparisonTile("Speechmatics Streaming", streamingSummary(speechmatics), `rewrite rate ${formatPercent(smRewriteRate)}`)}
-    ${comparisonTile("Deepgram First Partial", formatMs(deepgram?.first_partial_latency_ms), `first final ${formatMs(deepgram?.first_final_latency_ms)}`)}
-    ${comparisonTile("Speechmatics First Partial", formatMs(speechmatics?.first_partial_latency_ms), `first final ${formatMs(speechmatics?.first_final_latency_ms)}`)}
+    ${comparisonTile("Relative WER", formatPercent(wer), "Deepgram vs Speechmatics disagreement", "Word error rate needs a human reference transcript. Without one, this is a relative provider disagreement score computed from final Deepgram and Speechmatics text. Lower is better.")}
+    ${comparisonTile("Transcript Similarity", formatPercent(similarity), "Higher means providers agree more", "Similarity is 1 minus relative WER. Higher values mean the two providers produced more similar final transcripts.")}
+    ${comparisonTile("Latency Winner", latencyWinner, `${formatMs(deepgram?.avg_final_latency_ms)} vs ${formatMs(speechmatics?.avg_final_latency_ms)}`, "Compares average elapsed transcript event time for Deepgram and Speechmatics in this call. Lower is treated as faster.")}
+    ${comparisonTile("Stability Winner", stabilityWinner, `${formatPercent(deepgram?.transcript_stability)} vs ${formatPercent(speechmatics?.transcript_stability)}`, "Compares how often partial transcripts changed. Higher stability means fewer partial rewrites.")}
+    ${comparisonTile("Deepgram Streaming", streamingSummary(deepgram), `rewrite rate ${formatPercent(dgRewriteRate)}`, "Deepgram streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.")}
+    ${comparisonTile("Speechmatics Streaming", streamingSummary(speechmatics), `rewrite rate ${formatPercent(smRewriteRate)}`, "Speechmatics streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.")}
+    ${comparisonTile("Deepgram First Partial", formatMs(deepgram?.first_partial_latency_ms), `first final ${formatMs(deepgram?.first_final_latency_ms)}`, "Elapsed time from first mirrored audio frame to Deepgram's first partial transcript. The hint shows time to first final transcript.")}
+    ${comparisonTile("Speechmatics First Partial", formatMs(speechmatics?.first_partial_latency_ms), `first final ${formatMs(speechmatics?.first_final_latency_ms)}`, "Elapsed time from first mirrored audio frame to Speechmatics' first partial transcript. The hint shows time to first final transcript.")}
   `;
 }
 
-function comparisonTile(label, value, hint) {
+function comparisonTile(label, value, hint, description) {
   return `
     <div class="rounded bg-zinc-950 p-3">
-      <div class="text-xs uppercase text-zinc-500">${escapeHtml(label)}</div>
+      <div class="flex items-center gap-1 text-xs uppercase text-zinc-500">
+        <span>${escapeHtml(label)}</span>
+        ${infoIcon(description)}
+      </div>
       <div class="mt-1 text-sm font-semibold">${escapeHtml(value)}</div>
       <div class="mt-1 text-xs text-zinc-500">${escapeHtml(hint)}</div>
     </div>
   `;
 }
 
-function summaryTile(label, value, hint) {
+function summaryTile(label, value, hint, description) {
   return `
     <div class="rounded border border-zinc-800 bg-zinc-900 p-3">
-      <div class="text-xs uppercase text-zinc-500">${escapeHtml(label)}</div>
+      <div class="flex items-center gap-1 text-xs uppercase text-zinc-500">
+        <span>${escapeHtml(label)}</span>
+        ${infoIcon(description)}
+      </div>
       <div class="mt-1 truncate text-sm font-semibold" title="${escapeAttr(value)}">${escapeHtml(value)}</div>
       <div class="mt-1 truncate text-xs text-zinc-500" title="${escapeAttr(hint)}">${escapeHtml(hint)}</div>
     </div>
+  `;
+}
+
+function infoIcon(description) {
+  if (!description) return "";
+  return `
+    <span class="group relative inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-zinc-700 text-[10px] normal-case text-zinc-400" tabindex="0" aria-label="${escapeAttr(description)}">
+      i
+      <span class="pointer-events-none absolute left-1/2 top-5 z-20 hidden w-72 -translate-x-1/2 rounded border border-zinc-700 bg-zinc-950 p-2 text-left text-xs normal-case leading-5 text-zinc-200 shadow-xl group-hover:block group-focus:block">
+        ${escapeHtml(description)}
+      </span>
+    </span>
   `;
 }
 
@@ -296,7 +314,9 @@ function lastFinalTranscript(provider) {
 function renderTimeline() {
   const timeline = document.getElementById("timeline");
   timeline.innerHTML = "";
-  const groups = timelineGroups(state.events).reverse().slice(0, 120);
+  const groups = timelineGroups(state.events)
+    .sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0))
+    .slice(0, 120);
   groups.forEach((group) => {
     timeline.appendChild(timelineGroupCard(group));
   });
@@ -333,12 +353,14 @@ function timelineGroups(events) {
     .filter(Boolean)
     .forEach((group) => groups.push(group));
 
-  return groups.sort((a, b) => (a.endedAt || 0) - (b.endedAt || 0));
+  return groups;
 }
 
 function timelineGroupCard(group) {
   const card = document.createElement("div");
   const providerClass = group.provider === "deepgram" ? "border-sky-900/80" : "border-amber-900/80";
+  const partials = group.events.filter((event) => !event.is_final);
+  const finals = group.events.filter((event) => event.is_final);
   card.className = `rounded border ${providerClass} bg-zinc-950 p-3`;
   card.innerHTML = `
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -349,24 +371,52 @@ function timelineGroupCard(group) {
       </div>
       <div class="text-xs text-zinc-500">${escapeHtml(formatDateTime(group.endedAt))}</div>
     </div>
-    <div class="space-y-2">
-      ${group.events.map((event, index) => timelineEventLine(event, index)).join("")}
+    <div class="space-y-3">
+      ${partials.length ? `
+        <div>
+          <div class="mb-2 text-xs uppercase text-zinc-600">Partials</div>
+          <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            ${partials.map((event, index) => timelinePartialBlock(event, index)).join("")}
+          </div>
+        </div>
+      ` : ""}
+      ${finals.length ? `
+        <div>
+          <div class="mb-2 text-xs uppercase text-zinc-600">Final</div>
+          <div class="space-y-2">
+            ${finals.map((event) => timelineFinalBlock(event)).join("")}
+          </div>
+        </div>
+      ` : ""}
     </div>
   `;
   return card;
 }
 
-function timelineEventLine(event, index) {
-  const typeClass = event.is_final ? "bg-emerald-900/40 text-emerald-200" : "bg-zinc-800 text-zinc-300";
+function timelinePartialBlock(event, index) {
   return `
     <div class="rounded bg-black/30 p-2">
       <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-        <span class="rounded ${typeClass} px-2 py-0.5">${event.is_final ? "final" : `partial ${index + 1}`}</span>
+        <span class="rounded bg-zinc-800 px-2 py-0.5 text-zinc-300">partial ${index + 1}</span>
+        <span>${formatMs(event.latency_ms)}</span>
+        <span>#${event.sequence_id}</span>
+      </div>
+      <div class="mb-1 text-xs text-zinc-600">${escapeHtml(formatDateTime(event.timestamp))}</div>
+      <div class="text-zinc-300">${escapeHtml(event.transcript)}</div>
+    </div>
+  `;
+}
+
+function timelineFinalBlock(event) {
+  return `
+    <div class="rounded border border-emerald-900/60 bg-emerald-950/20 p-3">
+      <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+        <span class="rounded bg-emerald-900/50 px-2 py-0.5 text-emerald-200">final</span>
         <span>${formatMs(event.latency_ms)}</span>
         <span>#${event.sequence_id}</span>
         <span>${escapeHtml(formatDateTime(event.timestamp))}</span>
       </div>
-      <div class="${event.is_final ? "font-medium text-zinc-100" : "text-zinc-300"}">${escapeHtml(event.transcript)}</div>
+      <div class="font-medium leading-6 text-zinc-100">${escapeHtml(event.transcript)}</div>
     </div>
   `;
 }
