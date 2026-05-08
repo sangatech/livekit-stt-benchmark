@@ -93,7 +93,7 @@ function applyEventToSelectedCall(event) {
   renderProviderStats();
   renderSelectedCallSummary();
   renderQualityComparison();
-  appendTimelineEvent(event);
+  renderTimeline();
   renderChart();
 }
 
@@ -296,33 +296,79 @@ function lastFinalTranscript(provider) {
 function renderTimeline() {
   const timeline = document.getElementById("timeline");
   timeline.innerHTML = "";
-  [...state.events].reverse().slice(0, 200).forEach((event) => {
-    timeline.appendChild(timelineRow(event));
+  const groups = timelineGroups(state.events).reverse().slice(0, 120);
+  groups.forEach((group) => {
+    timeline.appendChild(timelineGroupCard(group));
   });
 }
 
-function appendTimelineEvent(event) {
-  const timeline = document.getElementById("timeline");
-  timeline.prepend(timelineRow(event));
-  while (timeline.children.length > 200) {
-    timeline.lastChild.remove();
+function timelineGroups(events) {
+  const active = {};
+  const groups = [];
+  const ordered = [...events].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+  for (const event of ordered) {
+    const provider = event.provider || "unknown";
+    if (!active[provider]) {
+      active[provider] = {
+        provider,
+        startedAt: event.timestamp,
+        endedAt: event.timestamp,
+        events: [],
+        isFinal: false,
+      };
+    }
+
+    active[provider].events.push(event);
+    active[provider].endedAt = event.timestamp;
+
+    if (event.is_final) {
+      active[provider].isFinal = true;
+      groups.push(active[provider]);
+      active[provider] = null;
+    }
   }
+
+  Object.values(active)
+    .filter(Boolean)
+    .forEach((group) => groups.push(group));
+
+  return groups.sort((a, b) => (a.endedAt || 0) - (b.endedAt || 0));
 }
 
-function timelineRow(event) {
-  const row = document.createElement("div");
-  row.className = "rounded bg-zinc-950 p-2";
-  row.dataset.eventKey = eventKey(event);
-  row.innerHTML = `
-    <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-      <span>${escapeHtml(event.provider)}</span>
-      <span>${event.is_final ? "final" : "partial"}</span>
-      <span>${formatMs(event.latency_ms)}</span>
-      <span>#${event.sequence_id}</span>
+function timelineGroupCard(group) {
+  const card = document.createElement("div");
+  const providerClass = group.provider === "deepgram" ? "border-sky-900/80" : "border-amber-900/80";
+  card.className = `rounded border ${providerClass} bg-zinc-950 p-3`;
+  card.innerHTML = `
+    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="font-medium">${escapeHtml(group.provider)}</span>
+        <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">${group.events.length} events</span>
+        <span class="rounded ${group.isFinal ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-300"} px-2 py-0.5 text-xs">${group.isFinal ? "finalized" : "in progress"}</span>
+      </div>
+      <div class="text-xs text-zinc-500">${escapeHtml(formatDateTime(group.endedAt))}</div>
     </div>
-    <div>${escapeHtml(event.transcript)}</div>
+    <div class="space-y-2">
+      ${group.events.map((event, index) => timelineEventLine(event, index)).join("")}
+    </div>
   `;
-  return row;
+  return card;
+}
+
+function timelineEventLine(event, index) {
+  const typeClass = event.is_final ? "bg-emerald-900/40 text-emerald-200" : "bg-zinc-800 text-zinc-300";
+  return `
+    <div class="rounded bg-black/30 p-2">
+      <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+        <span class="rounded ${typeClass} px-2 py-0.5">${event.is_final ? "final" : `partial ${index + 1}`}</span>
+        <span>${formatMs(event.latency_ms)}</span>
+        <span>#${event.sequence_id}</span>
+        <span>${escapeHtml(formatDateTime(event.timestamp))}</span>
+      </div>
+      <div class="${event.is_final ? "font-medium text-zinc-100" : "text-zinc-300"}">${escapeHtml(event.transcript)}</div>
+    </div>
+  `;
 }
 
 function eventKey(event) {
