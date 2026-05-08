@@ -5,6 +5,8 @@ A Python voice agent for LiveKit that uses AI to have natural conversations with
 ## Features
 
 - **Multi-STT Support**: Choose between Deepgram or Speechmatics for speech recognition
+- **STT Benchmarking**: Optional production, shadow, and comparison modes for Deepgram vs Speechmatics
+- **Real-time Dashboard**: FastAPI websocket dashboard for live transcripts, latency, and provider health
 - **AI-Powered Conversations**: Uses OpenAI GPT models for intelligent responses
 - **Instruction-Based Behavior**: Agent behavior controlled via `instruction.txt` file
 - **Environment-based Configuration**: Easy configuration via `.env` file
@@ -154,6 +156,44 @@ The agent uses an optimized session configuration similar to IT_Curves_Bot:
 | `OPENAI_LLM_MODEL` | OpenAI model for conversations | `gpt-4o-mini` | No |
 | `OPENAI_TTS_MODEL` | OpenAI TTS model | `tts-1` | No |
 | `OPENAI_TTS_VOICE` | OpenAI TTS voice | `alloy` | No |
+
+### STT Benchmarking
+
+The original production path remains single-provider. Enable benchmarking with feature flags:
+
+```env
+STT_BENCHMARK_MODE=shadow       # production, shadow, or comparison
+STT_PRIMARY_PROVIDER=deepgram
+STT_SHADOW_PROVIDER=speechmatics
+BENCHMARK_DATABASE_URL=postgresql+psycopg://benchmark:benchmark@localhost:5432/benchmark
+BENCHMARK_API_URL=http://127.0.0.1:8090
+BENCHMARK_PUBLISH_EVENTS=true
+BENCHMARK_STORAGE_ROOT=calls
+BENCHMARK_S3_BUCKET=
+```
+
+Run the dashboard:
+
+```bash
+uvicorn api.benchmark_app:app --host 0.0.0.0 --port 8080
+```
+
+Apply the PostgreSQL migration:
+
+```bash
+alembic upgrade head
+```
+
+Dashboard endpoints:
+
+- `/` live dashboard
+- `/ws/benchmark/live`
+- `/ws/call/{id}`
+- `/ws/provider-stats`
+
+Architecture and rollout details are in `docs/stt_benchmark_architecture.md`.
+
+Operational run commands are in `docs/runbook.md`.
 
 ## Troubleshooting
 
