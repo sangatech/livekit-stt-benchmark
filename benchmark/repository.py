@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
@@ -46,7 +46,7 @@ class BenchmarkRepository:
                     is_final=event.is_final,
                     confidence=event.confidence,
                     latency_ms=event.latency_ms,
-                    timestamp=datetime.fromtimestamp(event.timestamp),
+                    timestamp=datetime.fromtimestamp(event.timestamp, tz=timezone.utc),
                     raw_event=event.raw,
                 )
             )
@@ -56,7 +56,7 @@ class BenchmarkRepository:
         with self._factory() as session:
             call = session.query(BenchmarkCall).filter_by(call_id=call_id).one_or_none()
             if call is not None:
-                call.ended_at = datetime.utcnow()
+                call.ended_at = datetime.now(timezone.utc)
                 session.commit()
 
     def list_calls(self, *, limit: int = 100) -> list[dict[str, object]]:
@@ -95,6 +95,7 @@ class BenchmarkRepository:
                 "ended_at": call.ended_at.timestamp() if call.ended_at else None,
                 "events": [
                     {
+                        "id": event.id,
                         "provider": event.provider,
                         "transcript": event.transcript,
                         "is_final": event.is_final,

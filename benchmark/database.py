@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,10 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env", override=F
 Base = declarative_base()
 
 
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 class BenchmarkSession(Base):
     __tablename__ = "benchmark_sessions"
 
@@ -22,7 +26,7 @@ class BenchmarkSession(Base):
     mode = Column(String(32), nullable=False)
     primary_provider = Column(String(64), nullable=False)
     secondary_provider = Column(String(64))
-    started_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     ended_at = Column(DateTime(timezone=True))
     metadata_json = Column("metadata", JSON)
 
@@ -36,7 +40,7 @@ class BenchmarkCall(Base):
     session_id = Column(Integer, ForeignKey("benchmark_sessions.id"))
     call_id = Column(String(128), unique=True, index=True, nullable=False)
     room_id = Column(String(128), index=True, nullable=False)
-    started_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     ended_at = Column(DateTime(timezone=True))
     audio_duration_ms = Column(Float)
     raw_audio_uri = Column(Text)
@@ -81,7 +85,7 @@ class BenchmarkTranscriptEvent(Base):
     is_final = Column(Boolean, default=False, nullable=False)
     confidence = Column(Float)
     latency_ms = Column(Float)
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     raw_event = Column(JSON)
 
     call = relationship("BenchmarkCall", back_populates="transcript_events")
@@ -95,7 +99,7 @@ class BenchmarkLatencyMetric(Base):
     provider = Column(String(64), index=True, nullable=False)
     metric_name = Column(String(128), nullable=False)
     value_ms = Column(Float, nullable=False)
-    timestamp = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    timestamp = Column(DateTime(timezone=True), default=utc_now, nullable=False)
     metadata_json = Column("metadata", JSON)
 
     call = relationship("BenchmarkCall", back_populates="latency_metrics")

@@ -6,6 +6,7 @@ const state = {
   latency: { deepgram: [], speechmatics: [] },
   events: [],
   eventKeys: new Set(),
+  ingestCounter: 0,
 };
 
 const latencyChart = new Chart(document.getElementById("latencyChart"), {
@@ -68,6 +69,7 @@ function handleEvent(payload) {
       call_id: event.call_id,
       room_id: event.room_id,
       timestamp: event.timestamp,
+      ingest_order: state.ingestCounter,
     });
     if (!state.selectedCallId) state.selectedCallId = event.call_id;
     if (event.call_id === state.selectedCallId) {
@@ -81,8 +83,12 @@ function applyEventToSelectedCall(event) {
   const key = eventKey(event);
   if (state.eventKeys.has(key)) return;
   state.eventKeys.add(key);
+  if (event.ingest_order === undefined || event.ingest_order === null) {
+    event.ingest_order = state.ingestCounter;
+    state.ingestCounter += 1;
+  }
   state.events.push(event);
-  state.events.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  state.events.sort(compareEvents);
   state.transcripts[event.provider] = event.transcript;
   updateProviderStatsFromEvent(event);
   if (event.latency_ms !== null && event.latency_ms !== undefined) {
@@ -132,7 +138,11 @@ function resetSelectedState() {
 
 function rebuildSelectedState(events) {
   resetSelectedState();
-  state.events = [...events].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  state.events = [...events].map((event, index) => ({
+    ...event,
+    ingest_order: event.id ?? index,
+  })).sort(compareEvents);
+  state.ingestCounter = Math.max(state.ingestCounter, state.events.length);
   for (const event of state.events) {
     state.eventKeys.add(eventKey(event));
     state.transcripts[event.provider] = event.transcript;
@@ -325,22 +335,22 @@ function renderTimeline() {
 function timelineGroups(events) {
   const active = {};
   const groups = [];
-  const ordered = [...events].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  const ordered = [...events].sort(compareEvents);
 
   for (const event of ordered) {
     const provider = event.provider || "unknown";
     if (!active[provider]) {
       active[provider] = {
         provider,
-        startedAt: event.timestamp,
-        endedAt: event.timestamp,
+        startedAt: timelineOrderValue(event),
+        endedAt: timelineOrderValue(event),
         events: [],
         isFinal: false,
       };
     }
 
     active[provider].events.push(event);
-    active[provider].endedAt = event.timestamp;
+    active[provider].endedAt = timelineOrderValue(event);
 
     if (event.is_final) {
       active[provider].isFinal = true;
@@ -369,7 +379,7 @@ function timelineGroupCard(group) {
         <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">${group.events.length} events</span>
         <span class="rounded ${group.isFinal ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-300"} px-2 py-0.5 text-xs">${group.isFinal ? "finalized" : "in progress"}</span>
       </div>
-      <div class="text-xs text-zinc-500">${escapeHtml(formatDateTime(group.endedAt))}</div>
+      <div class="text-xs text-zinc-500">${escapeHtml(formatTimelineTime(group.events[0]))}</div>
     </div>
     <div class="space-y-3">
       ${partials.length ? `
@@ -401,7 +411,7 @@ function timelinePartialBlock(event, index) {
         <span>${formatMs(event.latency_ms)}</span>
         <span>#${event.sequence_id}</span>
       </div>
-      <div class="mb-1 text-xs text-zinc-600">${escapeHtml(formatDateTime(event.timestamp))}</div>
+      <div class="mb-1 text-xs text-zinc-600">${escapeHtml(formatTimelineTime(event))}</div>
       <div class="text-zinc-300">${escapeHtml(event.transcript)}</div>
     </div>
   `;
@@ -414,7 +424,7 @@ function timelineFinalBlock(event) {
         <span class="rounded bg-emerald-900/50 px-2 py-0.5 text-emerald-200">final</span>
         <span>${formatMs(event.latency_ms)}</span>
         <span>#${event.sequence_id}</span>
-        <span>${escapeHtml(formatDateTime(event.timestamp))}</span>
+        <span>${escapeHtml(formatTimelineTime(event))}</span>
       </div>
       <div class="font-medium leading-6 text-zinc-100">${escapeHtml(event.transcript)}</div>
     </div>
@@ -427,8 +437,19 @@ function eventKey(event) {
     event.provider || "",
     event.sequence_id ?? "",
     event.is_final ? "final" : "partial",
-    event.timestamp ?? "",
+    event.id ?? event.ingest_order ?? event.timestamp ?? "",
   ].join("|");
+}
+
+function compareEvents(a, b) {
+  return timelineOrderValue(a) - timelineOrderValue(b);
+}
+
+function timelineOrderValue(event) {
+  if (event.id !== null && event.id !== undefined) return Number(event.id);
+  if (event.ingest_order !== null && event.ingest_order !== undefined) return Number(event.ingest_order);
+  if (event.latency_ms !== null && event.latency_ms !== undefined) return Number(event.latency_ms);
+  return Number(event.timestamp || 0);
 }
 
 function renderChart() {
@@ -522,6 +543,13 @@ function formatDateTime(value) {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+function formatTimelineTime(event) {
+  if (event.latency_ms !== null && event.latency_ms !== undefined) {
+    return `t+${formatMs(event.latency_ms)}`;
+  }
+  return formatDateTime(event.timestamp);
 }
 
 function formatPercent(value) {

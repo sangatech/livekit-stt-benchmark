@@ -17,6 +17,18 @@ BENCHMARK_PUBLISH_EVENTS=true
 STT_BENCHMARK_MODE=shadow
 STT_PRIMARY_PROVIDER=deepgram
 STT_SHADOW_PROVIDER=speechmatics
+TURN_DETECTION_ENABLED=true
+TURN_DETECTION_MODEL=english
+VAD_MIN_SILENCE_DURATION=0.6
+MIN_ENDPOINTING_DELAY=0.5
+MAX_ENDPOINTING_DELAY=4.0
+ALLOW_INTERRUPTION=true
+DISCARD_AUDIO_IF_UNINTERRUPTIBLE=false
+MIN_INTERRUPTION_DURATION=0.8
+MIN_INTERRUPTION_WORDS=1
+FALSE_INTERRUPTION_TIMEOUT=1.5
+RESUME_FALSE_INTERRUPTION=true
+PREEMPTIVE_GENERATION=true
 ```
 
 If a password contains special characters, URL-encode them. For example, `@` becomes `%40`.
@@ -291,6 +303,36 @@ logs/agent-error.log
 ```
 
 ## Modes
+
+## AgentSession Voice Settings
+
+The agent uses the LiveKit English turn detector plus the IT_Curves-style VAD,
+endpointing, interruption, STT, TTS, and LLM wiring in `AgentSession`.
+The `Agent` itself only carries `instruction.txt`.
+
+```env
+TURN_DETECTION_ENABLED=true
+TURN_DETECTION_MODEL=english
+VAD_MIN_SILENCE_DURATION=0.6
+MIN_ENDPOINTING_DELAY=0.5
+MAX_ENDPOINTING_DELAY=4.0
+ALLOW_INTERRUPTION=true
+DISCARD_AUDIO_IF_UNINTERRUPTIBLE=false
+MIN_INTERRUPTION_DURATION=0.8
+MIN_INTERRUPTION_WORDS=1
+FALSE_INTERRUPTION_TIMEOUT=1.5
+RESUME_FALSE_INTERRUPTION=true
+PREEMPTIVE_GENERATION=true
+```
+
+Turn detection options:
+
+```env
+TURN_DETECTION_MODEL=english       # recommended for this English-only benchmark
+TURN_DETECTION_MODEL=vad           # VAD-only fallback
+TURN_DETECTION_MODEL=stt           # STT-based fallback
+TURN_DETECTION_MODEL=manual        # manual turn handling
+```
 
 Production mode:
 

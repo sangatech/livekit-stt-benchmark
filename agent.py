@@ -15,6 +15,7 @@ from livekit.agents import (
 from livekit.agents.voice import Agent
 from benchmark.client import BenchmarkHttpPublisher
 from livekit.plugins import openai, silero
+from livekit.plugins.turn_detector import english, multilingual
 from stt.benchmarking_stt import BenchmarkingSTT
 from stt.provider_manager import BenchmarkMode, STTProviderManager
 
@@ -44,6 +45,50 @@ def get_stt_provider():
             f"mode={selection.mode.value} primary={selection.primary.provider_name} secondary={secondary}"
         )
     return selection.primary.livekit_stt()
+
+
+def get_turn_detector():
+    """Get configured turn detection for English-first voice turns."""
+    if os.getenv("TURN_DETECTION_ENABLED", "true").lower() != "true":
+        return "vad"
+
+    model = os.getenv("TURN_DETECTION_MODEL", "english").lower()
+    threshold_value = os.getenv("TURN_DETECTION_UNLIKELY_THRESHOLD")
+    unlikely_threshold = float(threshold_value) if threshold_value else None
+
+    if model == "english":
+        return english.EnglishModel(unlikely_threshold=unlikely_threshold)
+    if model == "multilingual":
+        return multilingual.MultilingualModel(unlikely_threshold=unlikely_threshold)
+    if model in {"stt", "vad", "manual"}:
+        return model
+
+    raise ValueError("TURN_DETECTION_MODEL must be english, multilingual, stt, vad, or manual")
+
+
+def get_turn_handling():
+    """Mirror the existing IT_Curves-style session settings with current LiveKit APIs."""
+    return {
+        "turn_detection": get_turn_detector(),
+        "endpointing": {
+            "min_delay": float(os.getenv("MIN_ENDPOINTING_DELAY", "0.5")),
+            "max_delay": float(os.getenv("MAX_ENDPOINTING_DELAY", "4.0")),
+        },
+        "interruption": {
+            "enabled": os.getenv("ALLOW_INTERRUPTION", "true").lower() == "true",
+            "discard_audio_if_uninterruptible": os.getenv(
+                "DISCARD_AUDIO_IF_UNINTERRUPTIBLE", "false"
+            ).lower() == "true",
+            "min_duration": float(os.getenv("MIN_INTERRUPTION_DURATION", "0.8")),
+            "min_words": int(os.getenv("MIN_INTERRUPTION_WORDS", "1")),
+            "false_interruption_timeout": float(os.getenv("FALSE_INTERRUPTION_TIMEOUT", "1.5")),
+            "resume_false_interruption": os.getenv("RESUME_FALSE_INTERRUPTION", "true").lower()
+            == "true",
+        },
+        "preemptive_generation": {
+            "enabled": os.getenv("PREEMPTIVE_GENERATION", "true").lower() == "true",
+        },
+    }
 
 
 async def entrypoint(ctx: JobContext):
@@ -94,28 +139,21 @@ async def entrypoint(ctx: JobContext):
     
     # Load VAD with configuration
     vad = silero.VAD.load(
-        min_silence_duration=0.6,
+        min_silence_duration=float(os.getenv("VAD_MIN_SILENCE_DURATION", "0.6")),
     )
     
     # Create agent with instructions from file
     agent = Agent(
         instructions=instructions,
-        llm=llm_instance,
     )
     
     # Create session with proper configuration
     session = AgentSession(
         stt=stt,
+        llm=llm_instance,
         tts=tts,
         vad=vad,
-        allow_interruptions=True,
-        discard_audio_if_uninterruptible=False,
-        min_interruption_duration=0.8,  # Higher than default 0.5
-        min_interruption_words=1,  # Require at least 1 transcribed word
-        min_endpointing_delay=0.5,  # was 0.8 — tighten
-        max_endpointing_delay=4.0,  # was 6.0 — don't let pauses drag
-        false_interruption_timeout=1.5,  # was 2.0 — faster recovery
-        resume_false_interruption=True,
+        turn_handling=get_turn_handling(),
     )
 
     if provider_selection.mode == BenchmarkMode.PRODUCTION:
