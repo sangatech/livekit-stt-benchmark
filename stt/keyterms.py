@@ -14,25 +14,18 @@ def load_session_keyterms(*, provider: str, model: str = "") -> list[str]:
     except (FileNotFoundError, json.JSONDecodeError):
         return []
 
-    terms = []
     common_terms = data.get("common_keyterms", [])
-    if isinstance(common_terms, list):
-        terms.extend(common_terms)
+    if not isinstance(common_terms, list):
+        return []
 
-    agent_keyterms = data.get("agent_keyterms", {})
-    if isinstance(agent_keyterms, dict):
-        for values in agent_keyterms.values():
-            if isinstance(values, list):
-                terms.extend(values)
-
-    max_terms = _max_keyterms(data, provider=provider, model=model)
-    return _dedupe([term for term in terms if isinstance(term, str) and term.strip()])[:max_terms]
+    normalized_provider = _normalize_provider(provider)
+    cleaned = _dedupe([term for term in common_terms if isinstance(term, str) and term.strip()])
+    max_terms = _max_keyterms(data, provider=normalized_provider, model=model)
+    return cleaned[:max_terms]
 
 
 def _max_keyterms(data: dict, *, provider: str, model: str) -> int:
-    provider = provider.strip().lower()
-    if provider == "speechmatic":
-        provider = "speechmatics"
+    provider = _normalize_provider(provider)
 
     if provider == "speechmatics":
         return _positive_int(data.get("speechmatics_max_keyterms"), 200)
@@ -43,6 +36,13 @@ def _max_keyterms(data: dict, *, provider: str, model: str) -> int:
     if "nova" in model:
         return _positive_int(data.get("nova_max_keyterms"), 169)
     return _positive_int(data.get("max_keyterms"), 100)
+
+
+def _normalize_provider(provider: str) -> str:
+    provider = provider.strip().lower()
+    if provider == "speechmatic":
+        return "speechmatics"
+    return provider
 
 
 def _positive_int(value: object, fallback: int) -> int:
