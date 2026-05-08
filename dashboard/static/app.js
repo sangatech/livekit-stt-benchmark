@@ -8,6 +8,7 @@ const state = {
   turns: [],
   callWerSummary: null,
   allCallsWer: null,
+  referenceError: "",
   eventKeys: new Set(),
   ingestCounter: 0,
 };
@@ -119,7 +120,7 @@ async function selectCall(callId) {
   state.selectedCallId = callId;
   resetSelectedState();
   renderCalls();
-  const detail = await fetch(`/api/benchmark/calls/${encodeURIComponent(callId)}`).then((response) => response.json());
+  const detail = await fetchJson(`/api/benchmark/calls/${encodeURIComponent(callId)}`);
   state.calls.set(callId, detail);
   rebuildSelectedState(detail.events || []);
   await loadReferenceTurns(callId);
@@ -134,6 +135,7 @@ function resetSelectedState() {
   state.events = [];
   state.turns = [];
   state.callWerSummary = null;
+  state.referenceError = "";
   state.eventKeys = new Set();
   document.getElementById("timeline").innerHTML = "";
   document.getElementById("referenceTurns").innerHTML = "";
@@ -148,16 +150,26 @@ function resetSelectedState() {
 
 async function loadReferenceTurns(callId) {
   if (!callId) return;
-  const detail = await fetch(`/api/benchmark/calls/${encodeURIComponent(callId)}/turns`).then((response) => response.json());
-  state.turns = detail.turns || [];
-  state.callWerSummary = detail.wer_summary || null;
+  try {
+    const detail = await fetchJson(`/api/benchmark/calls/${encodeURIComponent(callId)}/turns`);
+    state.turns = detail.turns || [];
+    state.callWerSummary = detail.wer_summary || null;
+    state.referenceError = "";
+  } catch (error) {
+    state.turns = [];
+    state.callWerSummary = null;
+    state.referenceError = error.message;
+  }
   renderQualityComparison();
   renderReferenceTurns();
 }
 
 async function loadAllCallsWer() {
-  const summary = await fetch("/api/benchmark/wer/summary").then((response) => response.json());
-  state.allCallsWer = summary;
+  try {
+    state.allCallsWer = await fetchJson("/api/benchmark/wer/summary");
+  } catch (error) {
+    state.allCallsWer = { error: error.message };
+  }
   renderAllCallsWer();
 }
 
@@ -184,9 +196,6 @@ function rebuildSelectedState(events) {
   renderReferenceTurns();
   renderTimeline();
   renderChart();
-  if (event.is_final) {
-    loadReferenceTurns(event.call_id);
-  }
 }
 
 function updateProviderStatsFromEvent(event) {
@@ -301,6 +310,12 @@ function renderQualityComparison() {
 
 function renderAllCallsWer() {
   const summary = state.allCallsWer || {};
+  if (summary.error) {
+    document.getElementById("allCallsWer").innerHTML = `
+      <div class="rounded border border-red-900 bg-red-950/30 p-3 text-sm text-red-200 md:col-span-3">${escapeHtml(summary.error)}</div>
+    `;
+    return;
+  }
   const providers = summary.providers || {};
   document.getElementById("allCallsWer").innerHTML = `
     ${summaryTile("Reviewed Calls", formatCount(summary.reviewed_calls), `${formatCount(summary.reviewed_turns)} turns`, "Calls and turns that have saved human reference transcripts.")}
@@ -313,6 +328,10 @@ function renderReferenceTurns() {
   const container = document.getElementById("referenceTurns");
   if (!state.selectedCallId) {
     container.innerHTML = `<div class="text-zinc-500">Select a call to review reference transcripts.</div>`;
+    return;
+  }
+  if (state.referenceError) {
+    container.innerHTML = `<div class="rounded border border-red-900 bg-red-950/30 p-3 text-red-200">${escapeHtml(state.referenceError)}</div>`;
     return;
   }
   if (!state.turns.length) {
@@ -367,16 +386,26 @@ function referenceHint(turn) {
 async function saveReference(turnIndex) {
   const input = document.querySelector(`.reference-input[data-turn-index="${turnIndex}"]`);
   const reference = input ? input.value : "";
-  const detail = await fetch(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/turns/${turnIndex}/reference`, {
+  const detail = await fetchJson(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/turns/${turnIndex}/reference`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reference_transcript: reference }),
-  }).then((response) => response.json());
+  });
   state.turns = detail.turns || [];
   state.callWerSummary = detail.wer_summary || null;
+  state.referenceError = "";
   renderQualityComparison();
   renderReferenceTurns();
   await loadAllCallsWer();
+}
+
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || `${response.status} ${response.statusText}`);
+  }
+  return payload;
 }
 
 function comparisonTile(label, value, hint, description) {
