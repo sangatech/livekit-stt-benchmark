@@ -225,6 +225,46 @@ Stop:
 pm2 stop stt-dashboard stt-agent
 ```
 
+## Apache Reverse Proxy
+
+Apache should proxy public traffic to the dashboard backend on `127.0.0.1:8090`.
+
+Enable required Apache modules:
+
+```bash
+sudo a2enmod proxy proxy_http proxy_wstunnel headers rewrite ssl
+sudo systemctl restart apache2
+```
+
+Install the vhost:
+
+```bash
+sudo cp deploy/apache/stt.sangahub.com.conf /etc/apache2/sites-available/stt.sangahub.com.conf
+sudo a2ensite stt.sangahub.com.conf
+sudo apachectl configtest
+sudo systemctl reload apache2
+```
+
+The included vhost proxies:
+
+```text
+http://stt.sangahub.com/       -> http://127.0.0.1:8090/
+ws://stt.sangahub.com/ws/...   -> ws://127.0.0.1:8090/ws/...
+```
+
+Enable HTTPS with Certbot:
+
+```bash
+sudo certbot --apache -d stt.sangahub.com
+```
+
+Apache logs:
+
+```bash
+sudo tail -f /var/log/apache2/stt.sangahub.com-access.log
+sudo tail -f /var/log/apache2/stt.sangahub.com-error.log
+```
+
 ## Direct Script Logs
 
 By default, direct scripts print to the terminal:

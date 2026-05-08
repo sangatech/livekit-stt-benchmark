@@ -5,6 +5,7 @@ const state = {
   transcripts: { deepgram: "", speechmatics: "" },
   latency: { deepgram: [], speechmatics: [] },
   events: [],
+  eventKeys: new Set(),
 };
 
 const latencyChart = new Chart(document.getElementById("latencyChart"), {
@@ -77,8 +78,23 @@ function handleEvent(payload) {
 }
 
 function applyEventToSelectedCall(event) {
+  const key = eventKey(event);
+  if (state.eventKeys.has(key)) return;
+  state.eventKeys.add(key);
   state.events.push(event);
-  rebuildSelectedState(state.events);
+  state.events.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  state.transcripts[event.provider] = event.transcript;
+  updateProviderStatsFromEvent(event);
+  if (event.latency_ms !== null && event.latency_ms !== undefined) {
+    state.latency[event.provider] = state.latency[event.provider] || [];
+    state.latency[event.provider].push(Number(event.latency_ms.toFixed(1)));
+  }
+  renderComparison();
+  renderProviderStats();
+  renderSelectedCallSummary();
+  renderQualityComparison();
+  appendTimelineEvent(event);
+  renderChart();
 }
 
 async function loadCalls() {
@@ -105,10 +121,12 @@ function resetSelectedState() {
   state.transcripts = { deepgram: "", speechmatics: "" };
   state.latency = { deepgram: [], speechmatics: [] };
   state.events = [];
+  state.eventKeys = new Set();
   document.getElementById("timeline").innerHTML = "";
   renderComparison();
   renderProviderStats();
   renderSelectedCallSummary();
+  renderQualityComparison();
   renderChart();
 }
 
@@ -116,6 +134,7 @@ function rebuildSelectedState(events) {
   resetSelectedState();
   state.events = [...events].sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
   for (const event of state.events) {
+    state.eventKeys.add(eventKey(event));
     state.transcripts[event.provider] = event.transcript;
     updateProviderStatsFromEvent(event);
     if (event.latency_ms !== null && event.latency_ms !== undefined) {
@@ -126,6 +145,7 @@ function rebuildSelectedState(events) {
   renderComparison();
   renderProviderStats();
   renderSelectedCallSummary();
+  renderQualityComparison();
   renderTimeline();
   renderChart();
 }
@@ -140,6 +160,8 @@ function updateProviderStatsFromEvent(event) {
     confidences: [],
     partial_rewrites: 0,
     last_partial: "",
+    first_partial_latency_ms: null,
+    first_final_latency_ms: null,
   };
   stats.events += 1;
   if (event.is_final) stats.final_events += 1;
@@ -149,6 +171,12 @@ function updateProviderStatsFromEvent(event) {
     stats.last_partial = event.transcript;
   }
   if (event.latency_ms !== null && event.latency_ms !== undefined) stats.latencies.push(event.latency_ms);
+  if (!event.is_final && stats.first_partial_latency_ms === null && event.latency_ms !== null && event.latency_ms !== undefined) {
+    stats.first_partial_latency_ms = event.latency_ms;
+  }
+  if (event.is_final && stats.first_final_latency_ms === null && event.latency_ms !== null && event.latency_ms !== undefined) {
+    stats.first_final_latency_ms = event.latency_ms;
+  }
   if (event.confidence !== null && event.confidence !== undefined) stats.confidences.push(event.confidence);
   stats.avg_final_latency_ms = average(stats.latencies);
   stats.avg_confidence = average(stats.confidences);
@@ -166,7 +194,7 @@ function renderCalls() {
     return `
       <button data-call-id="${escapeAttr(call.call_id)}" class="call-button w-full rounded border ${selected ? "border-sky-500 bg-sky-950/40" : "border-zinc-800 bg-zinc-950"} p-2 text-left hover:border-zinc-600">
         <div class="break-words font-medium">${escapeHtml(call.call_id || "unknown")}</div>
-        <div class="break-words text-xs text-zinc-500">${escapeHtml(call.room_id || "")}</div>
+        <div class="break-words text-xs text-zinc-500">${escapeHtml(formatDateTime(call.started_at || call.timestamp))}</div>
       </button>
     `;
   }).join("") || `<div class="text-zinc-500">No calls yet</div>`;
@@ -211,6 +239,40 @@ function renderSelectedCallSummary() {
   `;
 }
 
+function renderQualityComparison() {
+  const deepgram = state.providers.deepgram;
+  const speechmatics = state.providers.speechmatics;
+  const dgFinal = lastFinalTranscript("deepgram");
+  const smFinal = lastFinalTranscript("speechmatics");
+  const wer = dgFinal && smFinal ? relativeWer(dgFinal, smFinal) : null;
+  const similarity = wer === null ? null : Math.max(0, 1 - wer);
+  const dgRewriteRate = rewriteRate(deepgram);
+  const smRewriteRate = rewriteRate(speechmatics);
+  const latencyWinner = providerWithLowerValue(deepgram?.avg_final_latency_ms, speechmatics?.avg_final_latency_ms);
+  const stabilityWinner = providerWithHigherValue(deepgram?.transcript_stability, speechmatics?.transcript_stability);
+
+  document.getElementById("qualityComparison").innerHTML = `
+    ${comparisonTile("Relative WER", formatPercent(wer), "Deepgram vs Speechmatics disagreement")}
+    ${comparisonTile("Transcript Similarity", formatPercent(similarity), "Higher means providers agree more")}
+    ${comparisonTile("Latency Winner", latencyWinner, `${formatMs(deepgram?.avg_final_latency_ms)} vs ${formatMs(speechmatics?.avg_final_latency_ms)}`)}
+    ${comparisonTile("Stability Winner", stabilityWinner, `${formatPercent(deepgram?.transcript_stability)} vs ${formatPercent(speechmatics?.transcript_stability)}`)}
+    ${comparisonTile("Deepgram Streaming", streamingSummary(deepgram), `rewrite rate ${formatPercent(dgRewriteRate)}`)}
+    ${comparisonTile("Speechmatics Streaming", streamingSummary(speechmatics), `rewrite rate ${formatPercent(smRewriteRate)}`)}
+    ${comparisonTile("Deepgram First Partial", formatMs(deepgram?.first_partial_latency_ms), `first final ${formatMs(deepgram?.first_final_latency_ms)}`)}
+    ${comparisonTile("Speechmatics First Partial", formatMs(speechmatics?.first_partial_latency_ms), `first final ${formatMs(speechmatics?.first_final_latency_ms)}`)}
+  `;
+}
+
+function comparisonTile(label, value, hint) {
+  return `
+    <div class="rounded bg-zinc-950 p-3">
+      <div class="text-xs uppercase text-zinc-500">${escapeHtml(label)}</div>
+      <div class="mt-1 text-sm font-semibold">${escapeHtml(value)}</div>
+      <div class="mt-1 text-xs text-zinc-500">${escapeHtml(hint)}</div>
+    </div>
+  `;
+}
+
 function summaryTile(label, value, hint) {
   return `
     <div class="rounded border border-zinc-800 bg-zinc-900 p-3">
@@ -226,23 +288,51 @@ function renderComparison() {
   document.getElementById("speechmaticsTranscript").textContent = state.transcripts.speechmatics || "";
 }
 
+function lastFinalTranscript(provider) {
+  const finals = state.events.filter((event) => event.provider === provider && event.is_final && event.transcript);
+  return finals.length ? finals[finals.length - 1].transcript : "";
+}
+
 function renderTimeline() {
   const timeline = document.getElementById("timeline");
   timeline.innerHTML = "";
   [...state.events].reverse().slice(0, 200).forEach((event) => {
-    const row = document.createElement("div");
-    row.className = "rounded bg-zinc-950 p-2";
-    row.innerHTML = `
-      <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-        <span>${escapeHtml(event.provider)}</span>
-        <span>${event.is_final ? "final" : "partial"}</span>
-        <span>${formatMs(event.latency_ms)}</span>
-        <span>#${event.sequence_id}</span>
-      </div>
-      <div>${escapeHtml(event.transcript)}</div>
-    `;
-    timeline.appendChild(row);
+    timeline.appendChild(timelineRow(event));
   });
+}
+
+function appendTimelineEvent(event) {
+  const timeline = document.getElementById("timeline");
+  timeline.prepend(timelineRow(event));
+  while (timeline.children.length > 200) {
+    timeline.lastChild.remove();
+  }
+}
+
+function timelineRow(event) {
+  const row = document.createElement("div");
+  row.className = "rounded bg-zinc-950 p-2";
+  row.dataset.eventKey = eventKey(event);
+  row.innerHTML = `
+    <div class="mb-1 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+      <span>${escapeHtml(event.provider)}</span>
+      <span>${event.is_final ? "final" : "partial"}</span>
+      <span>${formatMs(event.latency_ms)}</span>
+      <span>#${event.sequence_id}</span>
+    </div>
+    <div>${escapeHtml(event.transcript)}</div>
+  `;
+  return row;
+}
+
+function eventKey(event) {
+  return [
+    event.call_id || "",
+    event.provider || "",
+    event.sequence_id ?? "",
+    event.is_final ? "final" : "partial",
+    event.timestamp ?? "",
+  ].join("|");
 }
 
 function renderChart() {
@@ -257,6 +347,58 @@ function average(values) {
   return values.length ? values.reduce((sum, value) => sum + Number(value), 0) / values.length : null;
 }
 
+function relativeWer(primary, secondary) {
+  const a = tokenize(primary);
+  const b = tokenize(secondary);
+  const distance = editDistance(a, b);
+  return distance / Math.max(a.length, b.length, 1);
+}
+
+function tokenize(text) {
+  return String(text || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function editDistance(a, b) {
+  const rows = a.length + 1;
+  const cols = b.length + 1;
+  const matrix = Array.from({ length: rows }, () => Array(cols).fill(0));
+  for (let i = 0; i < rows; i += 1) matrix[i][0] = i;
+  for (let j = 0; j < cols; j += 1) matrix[0][j] = j;
+  for (let i = 1; i < rows; i += 1) {
+    for (let j = 1; j < cols; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
+  return matrix[a.length][b.length];
+}
+
+function rewriteRate(stats) {
+  if (!stats || !stats.partial_events) return null;
+  return stats.partial_rewrites / stats.partial_events;
+}
+
+function streamingSummary(stats) {
+  if (!stats) return "n/a";
+  return `${formatPercent(stats.transcript_stability)} stable`;
+}
+
+function providerWithLowerValue(deepgramValue, speechmaticsValue) {
+  if (deepgramValue === null || deepgramValue === undefined || speechmaticsValue === null || speechmaticsValue === undefined) return "n/a";
+  if (deepgramValue === speechmaticsValue) return "Tie";
+  return deepgramValue < speechmaticsValue ? "Deepgram" : "Speechmatics";
+}
+
+function providerWithHigherValue(deepgramValue, speechmaticsValue) {
+  if (deepgramValue === null || deepgramValue === undefined || speechmaticsValue === null || speechmaticsValue === undefined) return "n/a";
+  if (deepgramValue === speechmaticsValue) return "Tie";
+  return deepgramValue > speechmaticsValue ? "Deepgram" : "Speechmatics";
+}
+
 function formatMs(value) {
   return value === null || value === undefined ? "n/a" : `${Number(value).toFixed(0)} ms`;
 }
@@ -269,6 +411,21 @@ function formatDelta(value) {
 
 function formatCount(value) {
   return value === null || value === undefined ? "0" : String(value);
+}
+
+function formatDateTime(value) {
+  if (value === null || value === undefined) return "time unavailable";
+  const milliseconds = Number(value) < 1000000000000 ? Number(value) * 1000 : Number(value);
+  const date = new Date(milliseconds);
+  if (Number.isNaN(date.getTime())) return "time unavailable";
+  return date.toLocaleString([], {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 function formatPercent(value) {
