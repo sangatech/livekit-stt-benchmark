@@ -315,7 +315,7 @@ function renderTimeline() {
   const timeline = document.getElementById("timeline");
   timeline.innerHTML = "";
   const groups = timelineGroups(state.events)
-    .sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0))
+    .sort((a, b) => (b.startedAt || 0) - (a.startedAt || 0))
     .slice(0, 120);
   groups.forEach((group) => {
     timeline.appendChild(timelineGroupCard(group));
