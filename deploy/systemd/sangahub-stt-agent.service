@@ -1,0 +1,23 @@
+[Unit]
+Description=SangaHub LiveKit Voice Agent
+After=network-online.target sangahub-stt-dashboard.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_GROUP__
+WorkingDirectory=__APP_DIR__
+Environment=APP_DIR=__APP_DIR__
+Environment=LOG_DIR=__APP_DIR__/logs
+Environment=AGENT_MODE=start
+ExecStart=__APP_DIR__/scripts/run_agent.sh
+StandardOutput=append:__APP_DIR__/logs/agent.log
+StandardError=append:__APP_DIR__/logs/agent-error.log
+Restart=always
+RestartSec=5
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

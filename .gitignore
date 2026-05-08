@@ -11,3 +11,4 @@ ENV/
 *.egg-info/
 dist/
 build/
+logs/

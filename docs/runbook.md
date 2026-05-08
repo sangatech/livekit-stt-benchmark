@@ -63,6 +63,12 @@ Start the dashboard service:
 python -m uvicorn api.benchmark_app:app --host 0.0.0.0 --port 8090
 ```
 
+Or use the repo script:
+
+```bash
+./scripts/run_dashboard.sh
+```
+
 Open:
 
 ```text
@@ -112,7 +118,137 @@ Production:
 python agent.py start
 ```
 
+Or use the repo script:
+
+```bash
+./scripts/run_agent.sh
+```
+
 Restart the voice agent after changing benchmark code or `.env`. Calls that happened before the agent was restarted will not appear in the dashboard because transcript events were not being published yet.
+
+## Run On Server With systemd
+
+Recommended for a Linux server.
+
+1. Install dependencies:
+
+```bash
+python -m venv venv
+./venv/bin/python -m pip install -r requirements.txt
+```
+
+2. Confirm `.env` is configured and migrations are applied:
+
+```bash
+./venv/bin/python -m alembic upgrade head
+```
+
+3. Install systemd services:
+
+```bash
+sudo APP_DIR="$(pwd)" SERVICE_USER="$(whoami)" SERVICE_GROUP="$(id -gn)" ./scripts/install_systemd.sh
+```
+
+4. Start both services:
+
+```bash
+sudo systemctl start sangahub-stt-dashboard sangahub-stt-agent
+```
+
+5. Check status:
+
+```bash
+sudo systemctl status sangahub-stt-dashboard
+sudo systemctl status sangahub-stt-agent
+```
+
+6. Follow logs:
+
+```bash
+journalctl -u sangahub-stt-dashboard -f
+journalctl -u sangahub-stt-agent -f
+```
+
+Project log files:
+
+```bash
+tail -f logs/dashboard.log
+tail -f logs/dashboard-error.log
+tail -f logs/agent.log
+tail -f logs/agent-error.log
+```
+
+7. Restart after deploy or `.env` changes:
+
+```bash
+sudo systemctl restart sangahub-stt-dashboard sangahub-stt-agent
+```
+
+The dashboard listens on port `8090` by default.
+
+## Run On Server With PM2
+
+Use this if the server already uses PM2.
+
+```bash
+pm2 start deploy/pm2/ecosystem.config.cjs
+pm2 save
+```
+
+Check logs:
+
+```bash
+pm2 logs stt-dashboard
+pm2 logs stt-agent
+```
+
+PM2 also writes to project log files:
+
+```bash
+tail -f logs/dashboard.log
+tail -f logs/dashboard-error.log
+tail -f logs/dashboard-combined.log
+tail -f logs/agent.log
+tail -f logs/agent-error.log
+tail -f logs/agent-combined.log
+```
+
+Restart:
+
+```bash
+pm2 restart stt-dashboard stt-agent
+```
+
+Stop:
+
+```bash
+pm2 stop stt-dashboard stt-agent
+```
+
+## Direct Script Logs
+
+By default, direct scripts print to the terminal:
+
+```bash
+./scripts/run_dashboard.sh
+./scripts/run_agent.sh
+```
+
+To write direct script output to `logs/` instead:
+
+```bash
+LOG_TO_FILE=true ./scripts/run_dashboard.sh
+LOG_TO_FILE=true ./scripts/run_agent.sh
+```
+
+Direct script log files:
+
+```text
+logs/dashboard.log
+logs/dashboard-error.log
+logs/agent.log
+logs/agent-error.log
+```
 
 ## Modes
 
