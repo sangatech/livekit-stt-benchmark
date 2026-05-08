@@ -109,10 +109,13 @@ async def entrypoint(ctx: JobContext):
         tts=tts,
         vad=vad,
         allow_interruptions=True,
-        min_interruption_duration=0.8,
-        min_interruption_words=1,
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=4.0,
+        discard_audio_if_uninterruptible=False,
+        min_interruption_duration=0.8,  # Higher than default 0.5
+        min_interruption_words=1,  # Require at least 1 transcribed word
+        min_endpointing_delay=0.5,  # was 0.8 — tighten
+        max_endpointing_delay=4.0,  # was 6.0 — don't let pauses drag
+        false_interruption_timeout=1.5,  # was 2.0 — faster recovery
+        resume_false_interruption=True,
     )
 
     if provider_selection.mode == BenchmarkMode.PRODUCTION:
