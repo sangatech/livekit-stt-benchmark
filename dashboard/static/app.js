@@ -539,6 +539,8 @@ function timelineGroupCard(group) {
   const providerClass = group.provider === "deepgram" ? "border-sky-900/80" : "border-amber-900/80";
   const partials = group.events.filter((event) => !event.is_final);
   const finals = group.events.filter((event) => event.is_final);
+  const eventIds = group.events.map((event) => event.id).filter((id) => id !== null && id !== undefined);
+  const canDelete = eventIds.length === group.events.length && eventIds.length > 0;
   card.className = `rounded border ${providerClass} bg-zinc-950 p-3`;
   card.innerHTML = `
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -547,7 +549,12 @@ function timelineGroupCard(group) {
         <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">${group.events.length} events</span>
         <span class="rounded ${group.isFinal ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-300"} px-2 py-0.5 text-xs">${group.isFinal ? "finalized" : "in progress"}</span>
       </div>
-      <div class="text-xs text-zinc-500">${escapeHtml(formatTimelineTime(group.events[0]))}</div>
+      <div class="flex items-center gap-2">
+        <div class="text-xs text-zinc-500">${escapeHtml(formatTimelineTime(group.events[0]))}</div>
+        <button class="delete-turn inline-flex h-8 w-8 items-center justify-center rounded border border-red-900/70 text-red-300 hover:bg-red-950/50 disabled:cursor-not-allowed disabled:opacity-40" title="${canDelete ? "Delete this complete turn" : "Refresh the call before deleting"}" ${canDelete ? "" : "disabled"} data-event-ids="${escapeAttr(eventIds.join(","))}">
+          ${trashIcon()}
+        </button>
+      </div>
     </div>
     <div class="space-y-3">
       ${partials.length ? `
@@ -568,7 +575,38 @@ function timelineGroupCard(group) {
       ` : ""}
     </div>
   `;
+  const deleteButton = card.querySelector(".delete-turn");
+  if (deleteButton && canDelete) {
+    deleteButton.addEventListener("click", () => deleteTimelineGroup(eventIds));
+  }
   return card;
+}
+
+function trashIcon() {
+  return `
+    <svg aria-hidden="true" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6h18"></path>
+      <path d="M8 6V4h8v2"></path>
+      <path d="M19 6l-1 14H6L5 6"></path>
+      <path d="M10 11v6"></path>
+      <path d="M14 11v6"></path>
+    </svg>
+  `;
+}
+
+async function deleteTimelineGroup(eventIds) {
+  if (!state.selectedCallId || !eventIds.length) return;
+  const confirmed = window.confirm("Delete this complete turn, including partials and final transcript?");
+  if (!confirmed) return;
+  await fetchJson(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/events`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ event_ids: eventIds }),
+  });
+  const ids = new Set(eventIds.map((id) => Number(id)));
+  rebuildSelectedState(state.events.filter((event) => !ids.has(Number(event.id))));
+  await loadReferenceTurns(state.selectedCallId);
+  await loadAllCallsWer();
 }
 
 function timelinePartialBlock(event, index) {

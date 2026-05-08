@@ -178,6 +178,24 @@ class BenchmarkRepository:
             reference_transcript=reference_transcript,
         )
 
+    def delete_transcript_events(self, *, call_id: str, event_ids: list[int]) -> dict[str, object]:
+        if not event_ids:
+            return {"deleted": 0}
+        with self._factory() as session:
+            call = session.query(BenchmarkCall).filter_by(call_id=call_id).one_or_none()
+            if call is None:
+                raise ValueError(f"call_id not found: {call_id}")
+            deleted = (
+                session.query(BenchmarkTranscriptEvent)
+                .filter(
+                    BenchmarkTranscriptEvent.call_id_fk == call.id,
+                    BenchmarkTranscriptEvent.id.in_(event_ids),
+                )
+                .delete(synchronize_session=False)
+            )
+            session.commit()
+        return {"deleted": deleted}
+
     def wer_summary(self) -> dict[str, object]:
         provider_totals: dict[str, dict[str, float]] = {}
         reviewed_turns = 0

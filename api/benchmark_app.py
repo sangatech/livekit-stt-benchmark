@@ -128,6 +128,15 @@ async def save_call_reference(call_id: str, payload: dict[str, Any]) -> dict[str
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@app.delete("/api/benchmark/calls/{call_id}/events")
+async def delete_transcript_events(call_id: str, payload: dict[str, Any]) -> dict[str, object]:
+    event_ids = [int(event_id) for event_id in payload.get("event_ids", []) if event_id is not None]
+    try:
+        return repository.delete_transcript_events(call_id=call_id, event_ids=event_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/api/benchmark/wer/summary")
 async def wer_summary() -> dict[str, object]:
     return repository.wer_summary()
