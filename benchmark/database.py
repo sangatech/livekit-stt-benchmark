@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, create_engine
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, relationship, sessionmaker
 
@@ -50,6 +50,7 @@ class BenchmarkCall(Base):
     provider_results = relationship("BenchmarkProviderResult", back_populates="call")
     transcript_events = relationship("BenchmarkTranscriptEvent", back_populates="call")
     latency_metrics = relationship("BenchmarkLatencyMetric", back_populates="call")
+    reference_transcripts = relationship("BenchmarkReferenceTranscript", back_populates="call")
 
 
 class BenchmarkProviderResult(Base):
@@ -103,6 +104,20 @@ class BenchmarkLatencyMetric(Base):
     metadata_json = Column("metadata", JSON)
 
     call = relationship("BenchmarkCall", back_populates="latency_metrics")
+
+
+class BenchmarkReferenceTranscript(Base):
+    __tablename__ = "benchmark_reference_transcripts"
+    __table_args__ = (UniqueConstraint("call_id_fk", "turn_index", name="uq_reference_call_turn"),)
+
+    id = Column(Integer, primary_key=True)
+    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id"), nullable=False)
+    turn_index = Column(Integer, nullable=False)
+    reference_transcript = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    call = relationship("BenchmarkCall", back_populates="reference_transcripts")
 
 
 def database_url() -> str:

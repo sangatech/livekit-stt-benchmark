@@ -5,6 +5,9 @@ const state = {
   transcripts: { deepgram: "", speechmatics: "" },
   latency: { deepgram: [], speechmatics: [] },
   events: [],
+  turns: [],
+  callWerSummary: null,
+  allCallsWer: null,
   eventKeys: new Set(),
   ingestCounter: 0,
 };
@@ -119,6 +122,8 @@ async function selectCall(callId) {
   const detail = await fetch(`/api/benchmark/calls/${encodeURIComponent(callId)}`).then((response) => response.json());
   state.calls.set(callId, detail);
   rebuildSelectedState(detail.events || []);
+  await loadReferenceTurns(callId);
+  await loadAllCallsWer();
   renderCalls();
 }
 
@@ -127,13 +132,33 @@ function resetSelectedState() {
   state.transcripts = { deepgram: "", speechmatics: "" };
   state.latency = { deepgram: [], speechmatics: [] };
   state.events = [];
+  state.turns = [];
+  state.callWerSummary = null;
   state.eventKeys = new Set();
   document.getElementById("timeline").innerHTML = "";
+  document.getElementById("referenceTurns").innerHTML = "";
   renderComparison();
   renderProviderStats();
   renderSelectedCallSummary();
   renderQualityComparison();
+  renderReferenceTurns();
+  renderAllCallsWer();
   renderChart();
+}
+
+async function loadReferenceTurns(callId) {
+  if (!callId) return;
+  const detail = await fetch(`/api/benchmark/calls/${encodeURIComponent(callId)}/turns`).then((response) => response.json());
+  state.turns = detail.turns || [];
+  state.callWerSummary = detail.wer_summary || null;
+  renderQualityComparison();
+  renderReferenceTurns();
+}
+
+async function loadAllCallsWer() {
+  const summary = await fetch("/api/benchmark/wer/summary").then((response) => response.json());
+  state.allCallsWer = summary;
+  renderAllCallsWer();
 }
 
 function rebuildSelectedState(events) {
@@ -156,8 +181,12 @@ function rebuildSelectedState(events) {
   renderProviderStats();
   renderSelectedCallSummary();
   renderQualityComparison();
+  renderReferenceTurns();
   renderTimeline();
   renderChart();
+  if (event.is_final) {
+    loadReferenceTurns(event.call_id);
+  }
 }
 
 function updateProviderStatsFromEvent(event) {
@@ -252,18 +281,15 @@ function renderSelectedCallSummary() {
 function renderQualityComparison() {
   const deepgram = state.providers.deepgram;
   const speechmatics = state.providers.speechmatics;
-  const dgFinal = lastFinalTranscript("deepgram");
-  const smFinal = lastFinalTranscript("speechmatics");
-  const wer = dgFinal && smFinal ? relativeWer(dgFinal, smFinal) : null;
-  const similarity = wer === null ? null : Math.max(0, 1 - wer);
+  const callWer = state.callWerSummary?.providers || {};
   const dgRewriteRate = rewriteRate(deepgram);
   const smRewriteRate = rewriteRate(speechmatics);
   const latencyWinner = providerWithLowerValue(deepgram?.avg_final_latency_ms, speechmatics?.avg_final_latency_ms);
   const stabilityWinner = providerWithHigherValue(deepgram?.transcript_stability, speechmatics?.transcript_stability);
 
   document.getElementById("qualityComparison").innerHTML = `
-    ${comparisonTile("Relative WER", formatPercent(wer), "Deepgram vs Speechmatics disagreement", "Word error rate needs a human reference transcript. Without one, this is a relative provider disagreement score computed from final Deepgram and Speechmatics text. Lower is better.")}
-    ${comparisonTile("Transcript Similarity", formatPercent(similarity), "Higher means providers agree more", "Similarity is 1 minus relative WER. Higher values mean the two providers produced more similar final transcripts.")}
+    ${comparisonTile("Deepgram Call WER", formatPercent(callWer.deepgram?.wer), `${formatCount(callWer.deepgram?.turns)} reviewed turns`, "Deepgram word error rate against saved human reference transcripts for this call.")}
+    ${comparisonTile("Speechmatics Call WER", formatPercent(callWer.speechmatics?.wer), `${formatCount(callWer.speechmatics?.turns)} reviewed turns`, "Speechmatics word error rate against saved human reference transcripts for this call.")}
     ${comparisonTile("Latency Winner", latencyWinner, `${formatMs(deepgram?.avg_final_latency_ms)} vs ${formatMs(speechmatics?.avg_final_latency_ms)}`, "Compares average elapsed transcript event time for Deepgram and Speechmatics in this call. Lower is treated as faster.")}
     ${comparisonTile("Stability Winner", stabilityWinner, `${formatPercent(deepgram?.transcript_stability)} vs ${formatPercent(speechmatics?.transcript_stability)}`, "Compares how often partial transcripts changed. Higher stability means fewer partial rewrites.")}
     ${comparisonTile("Deepgram Streaming", streamingSummary(deepgram), `rewrite rate ${formatPercent(dgRewriteRate)}`, "Deepgram streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.")}
@@ -271,6 +297,86 @@ function renderQualityComparison() {
     ${comparisonTile("Deepgram First Partial", formatMs(deepgram?.first_partial_latency_ms), `first final ${formatMs(deepgram?.first_final_latency_ms)}`, "Elapsed time from first mirrored audio frame to Deepgram's first partial transcript. The hint shows time to first final transcript.")}
     ${comparisonTile("Speechmatics First Partial", formatMs(speechmatics?.first_partial_latency_ms), `first final ${formatMs(speechmatics?.first_final_latency_ms)}`, "Elapsed time from first mirrored audio frame to Speechmatics' first partial transcript. The hint shows time to first final transcript.")}
   `;
+}
+
+function renderAllCallsWer() {
+  const summary = state.allCallsWer || {};
+  const providers = summary.providers || {};
+  document.getElementById("allCallsWer").innerHTML = `
+    ${summaryTile("Reviewed Calls", formatCount(summary.reviewed_calls), `${formatCount(summary.reviewed_turns)} turns`, "Calls and turns that have saved human reference transcripts.")}
+    ${summaryTile("Deepgram All-Calls WER", formatPercent(providers.deepgram?.wer), `${formatCount(providers.deepgram?.turns)} turns`, "Deepgram aggregate WER against all saved human reference transcripts.")}
+    ${summaryTile("Speechmatics All-Calls WER", formatPercent(providers.speechmatics?.wer), `${formatCount(providers.speechmatics?.turns)} turns`, "Speechmatics aggregate WER against all saved human reference transcripts.")}
+  `;
+}
+
+function renderReferenceTurns() {
+  const container = document.getElementById("referenceTurns");
+  if (!state.selectedCallId) {
+    container.innerHTML = `<div class="text-zinc-500">Select a call to review reference transcripts.</div>`;
+    return;
+  }
+  if (!state.turns.length) {
+    container.innerHTML = `<div class="text-zinc-500">No final transcript turns yet.</div>`;
+    return;
+  }
+  container.innerHTML = state.turns.map((turn) => referenceTurnCard(turn)).join("");
+  container.querySelectorAll(".save-reference").forEach((button) => {
+    button.addEventListener("click", () => saveReference(Number(button.dataset.turnIndex)));
+  });
+}
+
+function referenceTurnCard(turn) {
+  const transcripts = turn.transcripts || {};
+  const providerWer = turn.provider_wer || {};
+  return `
+    <div class="rounded border border-zinc-800 bg-zinc-950 p-3">
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div class="font-medium">Turn ${Number(turn.turn_index) + 1}</div>
+        <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
+          <span>Deepgram WER ${formatPercent(providerWer.deepgram?.wer)}</span>
+          <span>Speechmatics WER ${formatPercent(providerWer.speechmatics?.wer)}</span>
+        </div>
+      </div>
+      <div class="mb-3 grid gap-3 md:grid-cols-2">
+        <div>
+          <div class="mb-1 text-xs uppercase text-sky-300">Deepgram</div>
+          <div class="min-h-20 rounded bg-black/30 p-2 leading-6">${escapeHtml(transcripts.deepgram || "")}</div>
+        </div>
+        <div>
+          <div class="mb-1 text-xs uppercase text-amber-300">Speechmatics</div>
+          <div class="min-h-20 rounded bg-black/30 p-2 leading-6">${escapeHtml(transcripts.speechmatics || "")}</div>
+        </div>
+      </div>
+      <label class="mb-1 block text-xs uppercase text-zinc-500" for="reference-${turn.turn_index}">Human Reference</label>
+      <textarea id="reference-${turn.turn_index}" class="reference-input min-h-20 w-full rounded border border-zinc-700 bg-zinc-900 p-2 text-sm text-zinc-100" data-turn-index="${turn.turn_index}">${escapeHtml(turn.reference_transcript || "")}</textarea>
+      <div class="mt-2 flex items-center justify-between gap-3">
+        <div class="text-xs text-zinc-500">${referenceHint(turn)}</div>
+        <button class="save-reference rounded bg-sky-700 px-3 py-1 text-xs font-medium text-white hover:bg-sky-600" data-turn-index="${turn.turn_index}">Save Reference</button>
+      </div>
+    </div>
+  `;
+}
+
+function referenceHint(turn) {
+  const reference = String(turn.reference_transcript || "").trim();
+  if (!reference) return "Enter the correct text the caller spoke.";
+  const providerWer = turn.provider_wer || {};
+  return `Saved. Deepgram edits ${formatCount(providerWer.deepgram?.edit_distance)}, Speechmatics edits ${formatCount(providerWer.speechmatics?.edit_distance)}.`;
+}
+
+async function saveReference(turnIndex) {
+  const input = document.querySelector(`.reference-input[data-turn-index="${turnIndex}"]`);
+  const reference = input ? input.value : "";
+  const detail = await fetch(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/turns/${turnIndex}/reference`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reference_transcript: reference }),
+  }).then((response) => response.json());
+  state.turns = detail.turns || [];
+  state.callWerSummary = detail.wer_summary || null;
+  renderQualityComparison();
+  renderReferenceTurns();
+  await loadAllCallsWer();
 }
 
 function comparisonTile(label, value, hint, description) {
@@ -570,5 +676,13 @@ function escapeAttr(value) {
   return escapeHtml(value).replace(/`/g, "&#096;");
 }
 
+document.getElementById("refreshWer").addEventListener("click", async () => {
+  if (state.selectedCallId) {
+    await loadReferenceTurns(state.selectedCallId);
+  }
+  await loadAllCallsWer();
+});
+
 loadCalls();
+loadAllCallsWer();
 connect();

@@ -43,10 +43,20 @@ Benchmark Engine -> PostgreSQL / local calls/{call_id}/ / S3
         |
         v
 FastAPI WebSockets -> Dashboard
+        |
+        v
+Human reference turns -> provider WER per call and across all calls
 
 Only the primary STT stream is returned to `AgentSession` for LLM/TTS turn handling.
 The shadow stream is silent and only feeds benchmark storage/UI.
 ```
+
+## Human Reference WER
+
+Final transcripts are paired by provider final-turn order. A reviewer enters
+the human reference transcript for each turn in the dashboard. WER is then
+computed separately for each provider against that saved reference transcript,
+and aggregate WER is computed across all reviewed turns.
 
 ## Modes
 

@@ -39,6 +39,7 @@ Expected success output includes:
 
 ```text
 Running upgrade  -> 20260507_0001, benchmark schema
+Running upgrade 20260507_0001 -> 20260508_0002, reference transcripts
 ```
 
 Verify:
@@ -50,7 +51,7 @@ python -m alembic current
 Expected:
 
 ```text
-20260507_0001 (head)
+20260508_0002 (head)
 ```
 
 ## Run Backend And UI
@@ -100,6 +101,8 @@ Main endpoints:
 - UI: `/`
 - Calls API: `/api/benchmark/calls`
 - Call detail API: `/api/benchmark/calls/{call_id}`
+- Call reference turns API: `/api/benchmark/calls/{call_id}/turns`
+- All-calls WER API: `/api/benchmark/wer/summary`
 - Live websocket: `/ws/benchmark/live`
 - Call websocket: `/ws/call/{call_id}`
 - Provider stats websocket: `/ws/provider-stats`
@@ -321,6 +324,18 @@ STT_BENCHMARK_MODE=comparison
 STT_PRIMARY_PROVIDER=deepgram
 STT_SHADOW_PROVIDER=speechmatics
 ```
+
+## Human Reference WER
+
+True WER requires a human reference transcript. Open a call in the dashboard,
+review each finalized turn, type what the caller actually said in the Human
+Reference WER section, and save it.
+
+After references are saved, the dashboard shows:
+
+- Per-turn WER for Deepgram and Speechmatics
+- Per-call WER for Deepgram and Speechmatics
+- All-calls aggregate WER for Deepgram and Speechmatics
 
 ## Docker Option
 

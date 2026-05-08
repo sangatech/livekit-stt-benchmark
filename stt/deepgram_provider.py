@@ -27,7 +27,7 @@ class DeepgramProvider(STTProvider):
             language="en",
             interim_results=interim_results,
             smart_format=True,
-            keyterms=keyterms,
+            keyterm=keyterms,
         )
 
     async def stream(self, frames: AsyncIterator[AudioFrameEnvelope]) -> AsyncIterator[STTTranscriptEvent]:

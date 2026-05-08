@@ -205,6 +205,20 @@ Dashboard endpoints:
 - `/ws/benchmark/live`
 - `/ws/call/{id}`
 - `/ws/provider-stats`
+- `/api/benchmark/calls/{call_id}/turns` human reference turn review
+- `/api/benchmark/wer/summary` all-calls WER summary
+
+### Human Reference WER
+
+The dashboard includes a Human Reference WER section for the selected call.
+Each finalized turn shows Deepgram and Speechmatics text side by side. Type
+what the caller actually said into the human reference field and save it.
+
+After a reference is saved, the dashboard calculates:
+
+- Deepgram WER for that turn and call
+- Speechmatics WER for that turn and call
+- Aggregate all-calls WER for each provider
 
 Architecture and rollout details are in `docs/stt_benchmark_architecture.md`.
 

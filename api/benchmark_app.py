@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.engine import make_url
@@ -92,6 +93,32 @@ async def call_detail(call_id: str) -> dict[str, object]:
     if stored is not None:
         return stored
     return engine.summary(call_id)
+
+
+@app.get("/api/benchmark/calls/{call_id}/turns")
+async def call_turns(call_id: str) -> dict[str, object]:
+    turns = repository.call_turns(call_id)
+    if turns is None:
+        raise HTTPException(status_code=404, detail="call not found")
+    return turns
+
+
+@app.post("/api/benchmark/calls/{call_id}/turns/{turn_index}/reference")
+async def save_reference(call_id: str, turn_index: int, payload: dict[str, Any]) -> dict[str, object]:
+    reference = str(payload.get("reference_transcript") or "").strip()
+    try:
+        return repository.save_reference_transcript(
+            call_id=call_id,
+            turn_index=turn_index,
+            reference_transcript=reference,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/api/benchmark/wer/summary")
+async def wer_summary() -> dict[str, object]:
+    return repository.wer_summary()
 
 
 @app.post("/api/benchmark/events/transcript")

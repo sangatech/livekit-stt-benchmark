@@ -56,6 +56,19 @@ def compare_transcripts(primary: str, secondary: str) -> dict[str, object]:
     }
 
 
+def wer_stats(reference: str, hypothesis: str) -> dict[str, object]:
+    reference_tokens = tokenize(reference.lower())
+    hypothesis_tokens = tokenize(hypothesis.lower())
+    distance = edit_distance(reference_tokens, hypothesis_tokens)
+    reference_words = len(reference_tokens)
+    return {
+        "wer": None if reference_words == 0 else distance / reference_words,
+        "edit_distance": distance,
+        "reference_words": reference_words,
+        "hypothesis_words": len(hypothesis_tokens),
+    }
+
+
 def edit_distance(reference: list[str], hypothesis: list[str]) -> int:
     rows = len(reference) + 1
     cols = len(hypothesis) + 1
