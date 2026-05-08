@@ -17,18 +17,6 @@ BENCHMARK_PUBLISH_EVENTS=true
 STT_BENCHMARK_MODE=shadow
 STT_PRIMARY_PROVIDER=deepgram
 STT_SHADOW_PROVIDER=speechmatics
-TURN_DETECTION_ENABLED=true
-TURN_DETECTION_MODEL=english
-VAD_MIN_SILENCE_DURATION=0.6
-MIN_ENDPOINTING_DELAY=0.5
-MAX_ENDPOINTING_DELAY=4.0
-ALLOW_INTERRUPTION=true
-DISCARD_AUDIO_IF_UNINTERRUPTIBLE=false
-MIN_INTERRUPTION_DURATION=0.8
-MIN_INTERRUPTION_WORDS=1
-FALSE_INTERRUPTION_TIMEOUT=1.5
-RESUME_FALSE_INTERRUPTION=true
-PREEMPTIVE_GENERATION=true
 ```
 
 If a password contains special characters, URL-encode them. For example, `@` becomes `%40`.
@@ -306,33 +294,10 @@ logs/agent-error.log
 
 ## AgentSession Voice Settings
 
-The agent uses the LiveKit English turn detector plus the IT_Curves-style VAD,
-endpointing, interruption, STT, TTS, and LLM wiring in `AgentSession`.
-The `Agent` itself only carries `instruction.txt`.
-
-```env
-TURN_DETECTION_ENABLED=true
-TURN_DETECTION_MODEL=english
-VAD_MIN_SILENCE_DURATION=0.6
-MIN_ENDPOINTING_DELAY=0.5
-MAX_ENDPOINTING_DELAY=4.0
-ALLOW_INTERRUPTION=true
-DISCARD_AUDIO_IF_UNINTERRUPTIBLE=false
-MIN_INTERRUPTION_DURATION=0.8
-MIN_INTERRUPTION_WORDS=1
-FALSE_INTERRUPTION_TIMEOUT=1.5
-RESUME_FALSE_INTERRUPTION=true
-PREEMPTIVE_GENERATION=true
-```
-
-Turn detection options:
-
-```env
-TURN_DETECTION_MODEL=english       # recommended for this English-only benchmark
-TURN_DETECTION_MODEL=vad           # VAD-only fallback
-TURN_DETECTION_MODEL=stt           # STT-based fallback
-TURN_DETECTION_MODEL=manual        # manual turn handling
-```
+The agent uses English-only STT, LiveKit's English turn detector, BVC telephony
+noise cancellation, endpointing, interruption, STT, TTS, and LLM wiring in
+`AgentSession`. These voice settings are fixed in `agent.py`; the `Agent`
+itself only carries `instruction.txt`.
 
 Production mode:
 
@@ -413,6 +378,11 @@ curl http://127.0.0.1:8090/api/benchmark/calls
 BENCHMARK_API_URL=http://127.0.0.1:8090
 BENCHMARK_PUBLISH_EVENTS=true
 ```
+
+If agent logs show benchmark publish failures with `Connection refused`, the
+agent is running but the benchmark dashboard API is not reachable at
+`BENCHMARK_API_URL`. Start the dashboard service, fix `BENCHMARK_API_URL`, or
+set `BENCHMARK_PUBLISH_EVENTS=false` when you do not need dashboard events.
 
 3. Restart the voice agent and place a new call.
 

@@ -9,7 +9,8 @@ A Python voice agent for LiveKit that uses AI to have natural conversations with
 - **Real-time Dashboard**: FastAPI websocket dashboard for live transcripts, latency, and provider health
 - **AI-Powered Conversations**: Uses OpenAI GPT models for intelligent responses
 - **Instruction-Based Behavior**: Agent behavior controlled via `instruction.txt` file
-- **Environment-based Configuration**: Easy configuration via `.env` file
+- **English Voice Pipeline**: English STT, LiveKit English turn detection, Silero VAD, and BVC telephony noise cancellation
+- **Environment-based Credentials**: `.env` is used for credentials, provider selection, model names, and benchmark settings
 - **Latest LiveKit SDK**: Built with the latest LiveKit agents framework (v1.5.8+)
 
 ## Prerequisites
@@ -19,7 +20,8 @@ A Python voice agent for LiveKit that uses AI to have natural conversations with
 - API keys for your chosen STT provider:
   - Deepgram API key (if using Deepgram)
   - Speechmatics API key (if using Speechmatics)
-- OpenAI API key (for TTS)
+- OpenAI API key (for LLM and TTS)
+- `livekit-plugins-noise-cancellation`, installed through `requirements.txt`
 
 ## Installation
 
@@ -46,12 +48,17 @@ STT_PROVIDER=deepgram  # or 'speechmatics'
 
 # Deepgram configuration (if using Deepgram)
 DEEPGRAM_API_KEY=your_deepgram_api_key
+DEEPGRAM_STT_MODEL=nova-3
 
 # Speechmatics configuration (if using Speechmatics)
 SPEECHMATICS_API_KEY=your_speechmatics_api_key
+SPEECHMATICS_OPERATING_POINT=enhanced
 
-# OpenAI for TTS
+# OpenAI for LLM and TTS
 OPENAI_API_KEY=your_openai_api_key
+OPENAI_LLM_MODEL=gpt-4o-mini
+OPENAI_TTS_MODEL=tts-1
+OPENAI_TTS_VOICE=alloy
 ```
 
 ## Usage
@@ -83,9 +90,10 @@ Make sure the corresponding API key is set in the `.env` file.
 2. Loads instructions from `instruction.txt` file
 3. Waits for a participant to join
 4. Uses the configured STT provider (Deepgram or Speechmatics) to transcribe speech
-5. Processes the transcription with OpenAI GPT model based on the instructions
-6. Responds using OpenAI TTS
-7. Continues the conversation naturally
+5. Uses fixed English turn handling, Silero VAD, and BVC telephony noise cancellation
+6. Processes the transcription with OpenAI GPT model based on the instructions
+7. Responds using OpenAI TTS
+8. Continues the conversation naturally
 
 ## Customizing Agent Behavior
 
@@ -121,22 +129,26 @@ testbot/
 
 The agent uses an optimized session configuration similar to IT_Curves_Bot:
 
+- **English Turn Detection**: LiveKit `EnglishModel()` is used directly in code
 - **Interruption Handling**: Allows natural interruptions with smart thresholds
 - **VAD (Voice Activity Detection)**: Silero VAD with 0.6s minimum silence duration
-- **Endpointing**: Configurable delays (0.5s min, 4.0s max) for natural conversation flow
+- **Endpointing**: Fixed delays (0.5s min, 4.0s max) for natural conversation flow
 - **Interruption Thresholds**: 0.8s duration minimum, at least 1 word required
+- **Noise Cancellation**: LiveKit BVC telephony noise cancellation via `RoomInputOptions`
+
+These voice settings are fixed in `agent.py`; they are not configured through `.env`.
 
 ### STT Providers
 
 **Deepgram**:
 - Fast and accurate
-- Supports multiple languages
+- English language configured in code
 - Real-time streaming
 - Models: `nova-2`, `nova-3`, `nova-2-general`, etc.
 
 **Speechmatics**:
 - High accuracy
-- Advanced language support
+- English language configured in code
 - Custom vocabulary support
 - Operating points: `enhanced` (recommended) or `standard`
 
@@ -207,6 +219,12 @@ If you see an error about missing API keys, ensure:
 - Verify your LiveKit server is running
 - Check that `LIVEKIT_URL` is correct
 - Ensure your API key and secret are valid
+
+### Benchmark Publish Connection Refused
+If the agent logs `benchmark API publish failed` or `Connection refused`, the
+dashboard API is not reachable at `BENCHMARK_API_URL`. Start the dashboard,
+correct `BENCHMARK_API_URL`, or set `BENCHMARK_PUBLISH_EVENTS=false` when you
+do not need benchmark dashboard events.
 
 ## License
 

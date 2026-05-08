@@ -7,6 +7,7 @@ from livekit import rtc
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
+    RoomInputOptions,
     WorkerOptions,
     cli,
     llm,
@@ -14,12 +15,23 @@ from livekit.agents import (
 )
 from livekit.agents.voice import Agent
 from benchmark.client import BenchmarkHttpPublisher
-from livekit.plugins import openai, silero
-from livekit.plugins.turn_detector import english, multilingual
+from livekit.plugins import noise_cancellation, openai, silero
+from livekit.plugins.turn_detector.english import EnglishModel
 from stt.benchmarking_stt import BenchmarkingSTT
 from stt.provider_manager import BenchmarkMode, STTProviderManager
 
 load_dotenv()
+
+VAD_MIN_SILENCE_DURATION = 0.6
+MIN_ENDPOINTING_DELAY = 0.5
+MAX_ENDPOINTING_DELAY = 4.0
+ALLOW_INTERRUPTION = True
+DISCARD_AUDIO_IF_UNINTERRUPTIBLE = False
+MIN_INTERRUPTION_DURATION = 0.8
+MIN_INTERRUPTION_WORDS = 1
+FALSE_INTERRUPTION_TIMEOUT = 1.5
+RESUME_FALSE_INTERRUPTION = True
+PREEMPTIVE_GENERATION = True
 
 
 def load_instructions():
@@ -47,48 +59,35 @@ def get_stt_provider():
     return selection.primary.livekit_stt()
 
 
-def get_turn_detector():
-    """Get configured turn detection for English-first voice turns."""
-    if os.getenv("TURN_DETECTION_ENABLED", "true").lower() != "true":
-        return "vad"
-
-    model = os.getenv("TURN_DETECTION_MODEL", "english").lower()
-    threshold_value = os.getenv("TURN_DETECTION_UNLIKELY_THRESHOLD")
-    unlikely_threshold = float(threshold_value) if threshold_value else None
-
-    if model == "english":
-        return english.EnglishModel(unlikely_threshold=unlikely_threshold)
-    if model == "multilingual":
-        return multilingual.MultilingualModel(unlikely_threshold=unlikely_threshold)
-    if model in {"stt", "vad", "manual"}:
-        return model
-
-    raise ValueError("TURN_DETECTION_MODEL must be english, multilingual, stt, vad, or manual")
-
-
 def get_turn_handling():
-    """Mirror the existing IT_Curves-style session settings with current LiveKit APIs."""
-    return {
-        "turn_detection": get_turn_detector(),
+    """Mirror IT_Curves-style English turn detection with current LiveKit APIs."""
+    turn_handling = {
         "endpointing": {
-            "min_delay": float(os.getenv("MIN_ENDPOINTING_DELAY", "0.5")),
-            "max_delay": float(os.getenv("MAX_ENDPOINTING_DELAY", "4.0")),
+            "min_delay": MIN_ENDPOINTING_DELAY,
+            "max_delay": MAX_ENDPOINTING_DELAY,
         },
         "interruption": {
-            "enabled": os.getenv("ALLOW_INTERRUPTION", "true").lower() == "true",
-            "discard_audio_if_uninterruptible": os.getenv(
-                "DISCARD_AUDIO_IF_UNINTERRUPTIBLE", "false"
-            ).lower() == "true",
-            "min_duration": float(os.getenv("MIN_INTERRUPTION_DURATION", "0.8")),
-            "min_words": int(os.getenv("MIN_INTERRUPTION_WORDS", "1")),
-            "false_interruption_timeout": float(os.getenv("FALSE_INTERRUPTION_TIMEOUT", "1.5")),
-            "resume_false_interruption": os.getenv("RESUME_FALSE_INTERRUPTION", "true").lower()
-            == "true",
+            "enabled": ALLOW_INTERRUPTION,
+            "discard_audio_if_uninterruptible": DISCARD_AUDIO_IF_UNINTERRUPTIBLE,
+            "min_duration": MIN_INTERRUPTION_DURATION,
+            "min_words": MIN_INTERRUPTION_WORDS,
+            "false_interruption_timeout": FALSE_INTERRUPTION_TIMEOUT,
+            "resume_false_interruption": RESUME_FALSE_INTERRUPTION,
         },
         "preemptive_generation": {
-            "enabled": os.getenv("PREEMPTIVE_GENERATION", "true").lower() == "true",
+            "enabled": PREEMPTIVE_GENERATION,
         },
     }
+
+    try:
+        turn_handling["turn_detection"] = EnglishModel()
+    except RuntimeError as exc:
+        print(
+            "Failed to initialize LiveKit EnglishModel turn detection; "
+            f"continuing without model-based turn detection: {exc}"
+        )
+
+    return turn_handling
 
 
 async def entrypoint(ctx: JobContext):
@@ -122,6 +121,8 @@ async def entrypoint(ctx: JobContext):
         )
     else:
         stt = primary_stt
+
+    bvc_options = noise_cancellation.BVCTelephony()
     
     # Get TTS model from environment
     tts_model = os.getenv("OPENAI_TTS_MODEL", "tts-1")
@@ -139,7 +140,7 @@ async def entrypoint(ctx: JobContext):
     
     # Load VAD with configuration
     vad = silero.VAD.load(
-        min_silence_duration=float(os.getenv("VAD_MIN_SILENCE_DURATION", "0.6")),
+        min_silence_duration=VAD_MIN_SILENCE_DURATION,
     )
     
     # Create agent with instructions from file
@@ -165,7 +166,13 @@ async def entrypoint(ctx: JobContext):
         )
     
     # Start the session with the agent
-    await session.start(agent=agent, room=ctx.room)
+    await session.start(
+        agent=agent,
+        room=ctx.room,
+        room_input_options=RoomInputOptions(
+            noise_cancellation=bvc_options,
+        ),
+    )
     
     # Give a brief delay then greet
     await asyncio.sleep(0.5)

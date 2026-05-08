@@ -4,7 +4,7 @@
 
 - LiveKit integration is in `agent.py`, via `JobContext`, `ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)`, and `AgentSession`.
 - STT selection was a single function returning exactly one provider object for `AgentSession(stt=stt, ...)`.
-- The current production voice flow is LiveKit Agents managed audio, VAD, STT, LLM, and TTS. There was no custom FastAPI server, frontend, database ORM, Alembic setup, or observability pipeline.
+- The current production voice flow is LiveKit Agents managed audio with fixed English turn detection, Silero VAD, BVC telephony noise cancellation, STT, LLM, and TTS. There was no custom FastAPI server, frontend, database ORM, Alembic setup, or observability pipeline.
 - Existing provider support was switch-based: `STT_PROVIDER=deepgram` or `STT_PROVIDER=speechmatics`.
 - The only hard single-provider assumptions were `get_stt_provider()` and the single `stt=` argument passed into `AgentSession`.
 
@@ -25,6 +25,9 @@ LiveKit Audio Track
         |
         v
 LiveKit AgentSession
+   EnglishModel turn detection
+   Silero VAD
+   BVC telephony noise cancellation
         |
         v
 BenchmarkingSTT tee

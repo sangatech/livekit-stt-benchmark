@@ -1,6 +1,7 @@
 livekit>=1.1.7
 livekit-protocol>=1.1.8
 livekit-agents[deepgram,openai,cartesia,silero,turn-detector,speechmatics,soniox]>=1.5.8
+livekit-plugins-noise-cancellation
 
 python-dotenv>=1.0.0
 fastapi>=0.110.0
