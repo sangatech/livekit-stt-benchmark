@@ -9,6 +9,9 @@ This agent is based on the IT_Curves_Bot session configuration and architecture,
 - **Deepgram**: Configured with `nova-2` model, smart formatting, English language
 - **Speechmatics**: Configured with enhanced operating point, 1.5s max delay
 - Provider selection via `STT_PROVIDER` environment variable
+- IT_Curves domain keyterms are loaded from `stt/keyterms.json`
+  - Deepgram receives capped terms through `keyterms`
+  - Speechmatics receives capped terms through `additional_vocab`
 
 ### 2. Session Configuration (from IT_Curves_Bot)
 The agent uses fixed voice-session parameters based on IT_Curves_Bot:

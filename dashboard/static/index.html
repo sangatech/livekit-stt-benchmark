@@ -19,19 +19,19 @@
         </div>
       </nav>
 
-      <section class="mx-auto grid max-w-7xl gap-4 px-4 py-4 lg:grid-cols-[320px_1fr]">
-        <aside class="space-y-4">
-          <section class="rounded border border-zinc-800 bg-zinc-900 p-3">
+      <section class="mx-auto grid max-w-7xl gap-4 px-4 py-4 lg:h-[calc(100vh-73px)] lg:grid-cols-[320px_1fr] lg:overflow-hidden">
+        <aside class="flex min-h-0 flex-col gap-4">
+          <section class="flex min-h-0 flex-1 flex-col rounded border border-zinc-800 bg-zinc-900 p-3">
             <h2 class="mb-3 text-sm font-semibold">Live Calls</h2>
-            <div id="calls" class="space-y-2 text-sm"></div>
+            <div id="calls" class="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1 text-sm"></div>
           </section>
-          <section class="rounded border border-zinc-800 bg-zinc-900 p-3">
+          <section class="max-h-72 overflow-y-auto rounded border border-zinc-800 bg-zinc-900 p-3">
             <h2 class="mb-3 text-sm font-semibold">Provider Performance</h2>
             <div id="providerStats" class="space-y-3 text-sm"></div>
           </section>
         </aside>
 
-        <div class="space-y-4">
+        <div class="min-h-0 space-y-4 overflow-y-auto pr-1">
           <section id="selectedCallSummary" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"></section>
 
           <section class="grid gap-4 xl:grid-cols-2">

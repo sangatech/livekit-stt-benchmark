@@ -5,6 +5,7 @@ from typing import Any, AsyncIterator
 
 from .base_provider import AudioFrameEnvelope, STTProvider, STTTranscriptEvent
 from .deepgram_provider import _normalize_livekit_event
+from .keyterms import load_session_keyterms
 
 
 class SpeechmaticsProvider(STTProvider):
@@ -17,18 +18,26 @@ class SpeechmaticsProvider(STTProvider):
 
     def livekit_stt(self) -> Any:
         from livekit.plugins import speechmatics
-        from livekit.plugins.speechmatics import OperatingPoint
+        from livekit.plugins.speechmatics import AdditionalVocabEntry, OperatingPoint
 
         operating_point = (
             OperatingPoint.ENHANCED
             if self.operating_point.lower() == "enhanced"
             else OperatingPoint.STANDARD
         )
+        additional_vocab = [
+            AdditionalVocabEntry(content=term)
+            for term in load_session_keyterms(
+                provider=self.provider_name,
+                model=self.operating_point,
+            )
+        ]
         return speechmatics.STT(
             operating_point=operating_point,
             language="en",
             max_delay=self.max_delay,
             enable_diarization=False,
+            additional_vocab=additional_vocab,
         )
 
     async def stream(self, frames: AsyncIterator[AudioFrameEnvelope]) -> AsyncIterator[STTTranscriptEvent]:

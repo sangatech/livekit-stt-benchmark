@@ -152,6 +152,9 @@ These voice settings are fixed in `agent.py`; they are not configured through `.
 - Custom vocabulary support
 - Operating points: `enhanced` (recommended) or `standard`
 
+Both providers receive the IT_Curves domain keyterms from `stt/keyterms.json`.
+Deepgram uses its native `keyterms` option; Speechmatics uses `additional_vocab`.
+
 ### Environment Variables
 
 | Variable | Description | Default | Required |

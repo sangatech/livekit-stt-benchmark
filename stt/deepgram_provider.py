@@ -5,6 +5,7 @@ import time
 from typing import Any, AsyncIterator
 
 from .base_provider import AudioFrameEnvelope, STTProvider, STTTranscriptEvent, monotonic_latency_ms
+from .keyterms import load_session_keyterms
 
 
 class DeepgramProvider(STTProvider):
@@ -20,11 +21,13 @@ class DeepgramProvider(STTProvider):
         benchmark_mode = os.getenv("STT_BENCHMARK_MODE", "production").lower()
         interim_default = "true" if benchmark_mode in {"shadow", "comparison"} else "false"
         interim_results = os.getenv("DEEPGRAM_INTERIM_RESULTS", interim_default).lower() == "true"
+        keyterms = load_session_keyterms(provider=self.provider_name, model=self.model)
         return deepgram.STT(
             model=self.model,
             language="en",
             interim_results=interim_results,
             smart_format=True,
+            keyterms=keyterms,
         )
 
     async def stream(self, frames: AsyncIterator[AudioFrameEnvelope]) -> AsyncIterator[STTTranscriptEvent]:
