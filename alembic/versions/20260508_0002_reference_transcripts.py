@@ -20,7 +20,7 @@ def upgrade() -> None:
     op.create_table(
         "benchmark_reference_transcripts",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id"), nullable=False),
+        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False),
         sa.Column("turn_index", sa.Integer(), nullable=False),
         sa.Column("reference_transcript", sa.Text(), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),

@@ -57,7 +57,7 @@ class BenchmarkProviderResult(Base):
     __tablename__ = "benchmark_provider_results"
 
     id = Column(Integer, primary_key=True)
-    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id"), nullable=False)
+    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False)
     provider = Column(String(64), index=True, nullable=False)
     final_transcript = Column(Text)
     avg_confidence = Column(Float)
@@ -79,7 +79,7 @@ class BenchmarkTranscriptEvent(Base):
     __tablename__ = "benchmark_transcript_events"
 
     id = Column(Integer, primary_key=True)
-    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id"), nullable=False)
+    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False)
     provider = Column(String(64), index=True, nullable=False)
     sequence_id = Column(Integer, nullable=False)
     transcript = Column(Text, nullable=False)
@@ -96,7 +96,7 @@ class BenchmarkLatencyMetric(Base):
     __tablename__ = "benchmark_latency_metrics"
 
     id = Column(Integer, primary_key=True)
-    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id"), nullable=False)
+    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False)
     provider = Column(String(64), index=True, nullable=False)
     metric_name = Column(String(128), nullable=False)
     value_ms = Column(Float, nullable=False)
@@ -111,7 +111,7 @@ class BenchmarkReferenceTranscript(Base):
     __table_args__ = (UniqueConstraint("call_id_fk", "turn_index", name="uq_reference_call_turn"),)
 
     id = Column(Integer, primary_key=True)
-    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id"), nullable=False)
+    call_id_fk = Column(Integer, ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False)
     turn_index = Column(Integer, nullable=False)
     reference_transcript = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), default=utc_now, nullable=False)

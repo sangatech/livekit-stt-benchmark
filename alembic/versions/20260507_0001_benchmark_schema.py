@@ -44,7 +44,7 @@ def upgrade() -> None:
     op.create_table(
         "benchmark_provider_results",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id"), nullable=False),
+        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False),
         sa.Column("provider", sa.String(length=64), nullable=False),
         sa.Column("final_transcript", sa.Text(), nullable=True),
         sa.Column("avg_confidence", sa.Float(), nullable=True),
@@ -63,7 +63,7 @@ def upgrade() -> None:
     op.create_table(
         "benchmark_transcript_events",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id"), nullable=False),
+        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False),
         sa.Column("provider", sa.String(length=64), nullable=False),
         sa.Column("sequence_id", sa.Integer(), nullable=False),
         sa.Column("transcript", sa.Text(), nullable=False),
@@ -77,7 +77,7 @@ def upgrade() -> None:
     op.create_table(
         "benchmark_latency_metrics",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id"), nullable=False),
+        sa.Column("call_id_fk", sa.Integer(), sa.ForeignKey("benchmark_calls.id", ondelete="CASCADE"), nullable=False),
         sa.Column("provider", sa.String(length=64), nullable=False),
         sa.Column("metric_name", sa.String(length=128), nullable=False),
         sa.Column("value_ms", sa.Float(), nullable=False),
