@@ -29,6 +29,8 @@ def _max_keyterms(data: dict, *, provider: str, model: str) -> int:
 
     if provider == "speechmatics":
         return _positive_int(data.get("speechmatics_max_keyterms"), 200)
+    if provider == "soniox":
+        return _positive_int(data.get("soniox_max_keyterms"), 200)
 
     model = model.strip().lower()
     if "flux" in model:
@@ -42,6 +44,8 @@ def _normalize_provider(provider: str) -> str:
     provider = provider.strip().lower()
     if provider == "speechmatic":
         return "speechmatics"
+    if provider == "seniox":
+        return "soniox"
     return provider
 
 

@@ -5,7 +5,7 @@
 - LiveKit integration is in `agent.py`, via `JobContext`, `ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)`, and `AgentSession`.
 - STT selection was a single function returning exactly one provider object for `AgentSession(stt=stt, ...)`.
 - The current production voice flow is LiveKit Agents managed audio with fixed English turn detection, Silero VAD, BVC telephony noise cancellation, STT, LLM, and TTS. There was no custom FastAPI server, frontend, database ORM, Alembic setup, or observability pipeline.
-- Existing provider support was switch-based: `STT_PROVIDER=deepgram` or `STT_PROVIDER=speechmatics`.
+- Existing provider support was switch-based. Supported provider names are now `deepgram`, `speechmatics`, and `soniox`.
 - The only hard single-provider assumptions were `get_stt_provider()` and the single `stt=` argument passed into `AgentSession`.
 
 ## Migration Plan
@@ -70,7 +70,7 @@ so segmentation differences are visible.
 
 1. Deploy dashboard and database with `STT_BENCHMARK_MODE=production`.
 2. Enable local persistence with a small internal traffic slice.
-3. Enable `shadow` with `STT_PRIMARY_PROVIDER=deepgram` and `STT_SHADOW_PROVIDER=speechmatics`.
+3. Enable `shadow` with `STT_PRIMARY_PROVIDER=deepgram` and `STT_SHADOW_PROVIDER=soniox` or `speechmatics`.
 4. Watch p95 final latency, reconnects, partial rewrite frequency, and dashboard websocket health.
 5. Reverse primary and shadow providers for an equivalent traffic window.
 6. Use `comparison` only in controlled sessions where live transcript visibility is desired.
@@ -80,7 +80,7 @@ so segmentation differences are visible.
 ```env
 STT_BENCHMARK_MODE=shadow
 STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=speechmatics
+STT_SHADOW_PROVIDER=soniox
 BENCHMARK_DATABASE_URL=postgresql+psycopg://benchmark:benchmark@postgres:5432/benchmark
 BENCHMARK_STORAGE_ROOT=calls
 BENCHMARK_S3_BUCKET=

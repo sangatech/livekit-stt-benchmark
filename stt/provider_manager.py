@@ -6,6 +6,7 @@ from enum import Enum
 
 from .base_provider import STTProvider
 from .deepgram_provider import DeepgramProvider
+from .soniox_provider import SonioxProvider
 from .speechmatics_provider import SpeechmaticsProvider
 
 
@@ -17,7 +18,12 @@ class BenchmarkMode(str, Enum):
 
 PROVIDERS: dict[str, type[STTProvider]] = {
     "deepgram": DeepgramProvider,
+    "soniox": SonioxProvider,
     "speechmatics": SpeechmaticsProvider,
+}
+
+PROVIDER_ALIASES = {
+    "seniox": "soniox",
 }
 
 
@@ -42,8 +48,8 @@ class STTProviderManager:
 
     def select(self) -> ProviderSelection:
         mode = BenchmarkMode(os.getenv("STT_BENCHMARK_MODE", "production").lower())
-        primary_name = os.getenv("STT_PRIMARY_PROVIDER", os.getenv("STT_PROVIDER", "deepgram")).lower()
-        secondary_name = os.getenv("STT_SHADOW_PROVIDER", "").lower()
+        primary_name = _normalize_provider_name(os.getenv("STT_PRIMARY_PROVIDER", os.getenv("STT_PROVIDER", "deepgram")))
+        secondary_name = _normalize_provider_name(os.getenv("STT_SHADOW_PROVIDER", ""))
 
         if not secondary_name:
             secondary_name = "speechmatics" if primary_name == "deepgram" else "deepgram"
@@ -53,9 +59,15 @@ class STTProviderManager:
         return ProviderSelection(mode=mode, primary=primary, secondary=secondary)
 
     def _build(self, provider_name: str) -> STTProvider:
+        provider_name = _normalize_provider_name(provider_name)
         try:
             provider_cls = PROVIDERS[provider_name]
         except KeyError as exc:
             supported = ", ".join(sorted(PROVIDERS))
             raise ValueError(f"Unknown STT provider: {provider_name}. Use one of: {supported}") from exc
         return provider_cls(call_id=self.call_id, room_id=self.room_id)
+
+
+def _normalize_provider_name(provider_name: str) -> str:
+    normalized = provider_name.strip().lower()
+    return PROVIDER_ALIASES.get(normalized, normalized)

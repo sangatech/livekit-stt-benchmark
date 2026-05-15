@@ -13,7 +13,7 @@
         <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <div>
             <h1 class="text-lg font-semibold tracking-normal">STT Benchmark</h1>
-            <p class="text-xs text-zinc-400">Deepgram vs Speechmatics live production comparison</p>
+            <p class="text-xs text-zinc-400">Live production comparison across configured STT providers</p>
           </div>
           <div id="socketState" class="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-300">connecting</div>
         </div>
@@ -37,16 +37,7 @@
           <section class="grid gap-4 xl:grid-cols-2">
             <div class="rounded border border-zinc-800 bg-zinc-900 p-3">
               <h2 class="mb-3 text-sm font-semibold">Transcript Comparison</h2>
-              <div class="grid gap-3 md:grid-cols-2">
-                <div>
-                  <div class="mb-2 text-xs uppercase text-zinc-500">Deepgram</div>
-                  <div id="deepgramTranscript" class="min-h-32 rounded bg-zinc-950 p-3 text-sm leading-6"></div>
-                </div>
-                <div>
-                  <div class="mb-2 text-xs uppercase text-zinc-500">Speechmatics</div>
-                  <div id="speechmaticsTranscript" class="min-h-32 rounded bg-zinc-950 p-3 text-sm leading-6"></div>
-                </div>
-              </div>
+              <div id="transcriptComparison" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3"></div>
             </div>
             <div class="rounded border border-zinc-800 bg-zinc-900 p-3">
               <div class="mb-3 flex items-start justify-between gap-3">
@@ -77,7 +68,7 @@
               </div>
               <button id="refreshWer" class="rounded bg-zinc-800 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-700">Refresh</button>
             </div>
-            <div id="allCallsWer" class="mb-3 grid gap-3 md:grid-cols-3"></div>
+            <div id="allCallsWer" class="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4"></div>
             <div id="callReference" class="mb-3"></div>
             <div id="referenceTurns" class="space-y-3 text-sm"></div>
           </section>

@@ -4,8 +4,8 @@ A Python voice agent for LiveKit that uses AI to have natural conversations with
 
 ## Features
 
-- **Multi-STT Support**: Choose between Deepgram or Speechmatics for speech recognition
-- **STT Benchmarking**: Optional production, shadow, and comparison modes for Deepgram vs Speechmatics
+- **Multi-STT Support**: Choose between Deepgram, Speechmatics, or Soniox for speech recognition
+- **STT Benchmarking**: Optional production, shadow, and comparison modes across configured STT providers
 - **Real-time Dashboard**: FastAPI websocket dashboard for live transcripts, latency, and provider health
 - **AI-Powered Conversations**: Uses OpenAI GPT models for intelligent responses
 - **Instruction-Based Behavior**: Agent behavior controlled via `instruction.txt` file
@@ -20,6 +20,7 @@ A Python voice agent for LiveKit that uses AI to have natural conversations with
 - API keys for your chosen STT provider:
   - Deepgram API key (if using Deepgram)
   - Speechmatics API key (if using Speechmatics)
+  - Soniox API key (if using Soniox)
 - OpenAI API key (for LLM and TTS)
 - `livekit-plugins-noise-cancellation`, installed through `requirements.txt`
 
@@ -44,7 +45,7 @@ LIVEKIT_API_KEY=your_livekit_api_key
 LIVEKIT_API_SECRET=your_livekit_api_secret
 
 # Choose your STT provider
-STT_PROVIDER=deepgram  # or 'speechmatics'
+STT_PROVIDER=deepgram  # or 'speechmatics' or 'soniox'
 
 # Deepgram configuration (if using Deepgram)
 DEEPGRAM_API_KEY=your_deepgram_api_key
@@ -53,6 +54,10 @@ DEEPGRAM_STT_MODEL=nova-3
 # Speechmatics configuration (if using Speechmatics)
 SPEECHMATICS_API_KEY=your_speechmatics_api_key
 SPEECHMATICS_OPERATING_POINT=enhanced
+
+# Soniox configuration (if using Soniox)
+SONIOX_API_KEY=your_soniox_api_key
+SONIOX_STT_MODEL=stt-rt-v4
 
 # OpenAI for LLM and TTS
 OPENAI_API_KEY=your_openai_api_key
@@ -81,6 +86,7 @@ To switch between STT providers, simply change the `STT_PROVIDER` value in your 
 
 - For Deepgram: `STT_PROVIDER=deepgram`
 - For Speechmatics: `STT_PROVIDER=speechmatics`
+- For Soniox: `STT_PROVIDER=soniox`
 
 Make sure the corresponding API key is set in the `.env` file.
 
@@ -89,7 +95,7 @@ Make sure the corresponding API key is set in the `.env` file.
 1. The agent connects to a LiveKit room
 2. Loads instructions from `instruction.txt` file
 3. Waits for a participant to join
-4. Uses the configured STT provider (Deepgram or Speechmatics) to transcribe speech
+4. Uses the configured STT provider to transcribe speech
 5. Uses fixed English turn handling, Silero VAD, and BVC telephony noise cancellation
 6. Processes the transcription with OpenAI GPT model based on the instructions
 7. Responds using OpenAI TTS
@@ -152,8 +158,14 @@ These voice settings are fixed in `agent.py`; they are not configured through `.
 - Custom vocabulary support
 - Operating points: `enhanced` (recommended) or `standard`
 
-Both providers receive the IT_Curves domain keyterms from `stt/keyterms.json`.
-Deepgram uses its native `keyterms` option; Speechmatics uses `additional_vocab`.
+**Soniox**:
+- Real-time streaming via the LiveKit Soniox plugin
+- English language hints configured in code
+- Context terms support
+- Model: `stt-rt-v4` by default
+
+All providers receive the IT_Curves domain keyterms from `stt/keyterms.json`.
+Deepgram uses its native `keyterms` option; Speechmatics uses `additional_vocab`; Soniox uses context terms.
 
 ### Environment Variables
 
@@ -162,11 +174,14 @@ Deepgram uses its native `keyterms` option; Speechmatics uses `additional_vocab`
 | `LIVEKIT_URL` | LiveKit server URL | - | Yes |
 | `LIVEKIT_API_KEY` | LiveKit API key | - | Yes |
 | `LIVEKIT_API_SECRET` | LiveKit API secret | - | Yes |
-| `STT_PROVIDER` | STT provider (`deepgram` or `speechmatics`) | `deepgram` | Yes |
+| `STT_PROVIDER` | STT provider (`deepgram`, `speechmatics`, or `soniox`) | `deepgram` | Yes |
 | `DEEPGRAM_API_KEY` | Deepgram API key | - | If using Deepgram |
 | `DEEPGRAM_STT_MODEL` | Deepgram model | `nova-2` | No |
 | `SPEECHMATICS_API_KEY` | Speechmatics API key | - | If using Speechmatics |
 | `SPEECHMATICS_OPERATING_POINT` | Speechmatics quality (`enhanced` or `standard`) | `enhanced` | No |
+| `SONIOX_API_KEY` | Soniox API key | - | If using Soniox |
+| `SONIOX_STT_MODEL` | Soniox model | `stt-rt-v4` | No |
+| `SONIOX_MAX_ENDPOINT_DELAY_MS` | Soniox endpoint delay in milliseconds | `500` | No |
 | `OPENAI_API_KEY` | OpenAI API key for LLM and TTS | - | Yes |
 | `OPENAI_LLM_MODEL` | OpenAI model for conversations | `gpt-4o-mini` | No |
 | `OPENAI_TTS_MODEL` | OpenAI TTS model | `tts-1` | No |
@@ -179,7 +194,7 @@ The original production path remains single-provider. Enable benchmarking with f
 ```env
 STT_BENCHMARK_MODE=shadow       # production, shadow, or comparison
 STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=speechmatics
+STT_SHADOW_PROVIDER=soniox      # or speechmatics
 BENCHMARK_DATABASE_URL=postgresql+psycopg://benchmark:benchmark@localhost:5432/benchmark
 BENCHMARK_API_URL=http://127.0.0.1:8090
 BENCHMARK_PUBLISH_EVENTS=true
@@ -217,8 +232,7 @@ sentence into two finals can still score correctly at call level.
 
 After a reference is saved, the dashboard calculates:
 
-- Deepgram call-level WER
-- Speechmatics call-level WER
+- Per-provider call-level WER
 - Aggregate all-calls WER for each provider
 - Final segment counts per provider, so you can see which provider split the
   same speech into one, two, or more final segments

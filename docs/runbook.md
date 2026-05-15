@@ -16,7 +16,7 @@ BENCHMARK_API_URL=http://127.0.0.1:8090
 BENCHMARK_PUBLISH_EVENTS=true
 STT_BENCHMARK_MODE=shadow
 STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=speechmatics
+STT_SHADOW_PROVIDER=soniox
 ```
 
 If a password contains special characters, URL-encode them. For example, `@` becomes `%40`.
@@ -314,7 +314,7 @@ Shadow mode:
 ```env
 STT_BENCHMARK_MODE=shadow
 STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=speechmatics
+STT_SHADOW_PROVIDER=soniox
 ```
 
 Comparison mode:
@@ -322,7 +322,7 @@ Comparison mode:
 ```env
 STT_BENCHMARK_MODE=comparison
 STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=speechmatics
+STT_SHADOW_PROVIDER=soniox
 ```
 
 ## Human Reference WER
@@ -334,8 +334,8 @@ so different final segmentation does not corrupt call-level WER.
 
 After references are saved, the dashboard shows:
 
-- Per-call WER for Deepgram and Speechmatics
-- All-calls aggregate WER for Deepgram and Speechmatics
+- Per-call WER for every configured provider
+- All-calls aggregate WER for every configured provider
 - Final segment counts and final segment text for each provider
 
 ## Docker Option
@@ -407,7 +407,7 @@ If only the primary provider appears, confirm shadow mode is enabled and restart
 ```env
 STT_BENCHMARK_MODE=shadow
 STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=speechmatics
+STT_SHADOW_PROVIDER=soniox
 ```
 
-In shadow/comparison mode, `agent.py` uses `BenchmarkingSTT` to tee the same audio frames to both providers. The primary provider still drives the conversation; the shadow provider only publishes benchmark events.
+In shadow/comparison mode, `agent.py` uses `BenchmarkingSTT` to tee the same audio frames to both providers. The primary provider still drives the conversation; the shadow provider only publishes benchmark events. Supported provider names are `deepgram`, `speechmatics`, and `soniox`; `seniox` is accepted as an alias for `soniox`.

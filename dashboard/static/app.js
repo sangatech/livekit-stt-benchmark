@@ -2,8 +2,8 @@ const state = {
   calls: new Map(),
   selectedCallId: null,
   providers: {},
-  transcripts: { deepgram: "", speechmatics: "" },
-  latency: { deepgram: [], speechmatics: [] },
+  transcripts: {},
+  latency: {},
   events: [],
   turns: [],
   callWerSummary: null,
@@ -17,14 +17,17 @@ const state = {
   ingestCounter: 0,
 };
 
+const PROVIDER_META = {
+  deepgram: { label: "Deepgram", color: "#38bdf8", borderClass: "border-sky-900/80" },
+  speechmatics: { label: "Speechmatics", color: "#f59e0b", borderClass: "border-amber-900/80" },
+  soniox: { label: "Soniox", color: "#22c55e", borderClass: "border-emerald-900/80" },
+};
+
 const latencyChart = new Chart(document.getElementById("latencyChart"), {
   type: "line",
   data: {
     labels: [],
-    datasets: [
-      { label: "Deepgram", data: [], borderColor: "#38bdf8", tension: 0.25 },
-      { label: "Speechmatics", data: [], borderColor: "#f59e0b", tension: 0.25 },
-    ],
+    datasets: [],
   },
   options: {
     responsive: true,
@@ -134,8 +137,8 @@ async function selectCall(callId) {
 
 function resetSelectedState() {
   state.providers = {};
-  state.transcripts = { deepgram: "", speechmatics: "" };
-  state.latency = { deepgram: [], speechmatics: [] };
+  state.transcripts = {};
+  state.latency = {};
   state.events = [];
   state.turns = [];
   state.callWerSummary = null;
@@ -274,7 +277,7 @@ function renderProviderStats() {
   document.getElementById("providerStats").innerHTML = Object.values(state.providers).map((stats) => `
     <div class="rounded bg-zinc-950 p-2">
       <div class="mb-1 flex items-center justify-between">
-        <span class="font-medium">${escapeHtml(stats.provider)}</span>
+        <span class="font-medium">${escapeHtml(providerLabel(stats.provider))}</span>
         <span class="text-xs text-zinc-400">${formatMs(stats.avg_final_latency_ms)}</span>
       </div>
       <div class="grid grid-cols-2 gap-2 text-xs text-zinc-400">
@@ -289,39 +292,43 @@ function renderProviderStats() {
 
 function renderSelectedCallSummary() {
   const call = state.calls.get(state.selectedCallId) || {};
-  const deepgram = state.providers.deepgram;
-  const speechmatics = state.providers.speechmatics;
-  const deepgramAvg = deepgram?.avg_final_latency_ms;
-  const speechmaticsAvg = speechmatics?.avg_final_latency_ms;
-  const delta = deepgramAvg !== null && deepgramAvg !== undefined && speechmaticsAvg !== null && speechmaticsAvg !== undefined
-    ? speechmaticsAvg - deepgramAvg
-    : null;
+  const providerTiles = providerNames().map((provider) => {
+    const stats = state.providers[provider];
+    const label = providerLabel(provider);
+    return summaryTile(`${label} Events`, formatCount(stats?.events), `${formatCount(stats?.final_events)} final`, `Total ${label} transcript events received for this call. Events include partial and final transcript updates.`);
+  }).join("");
 
   document.getElementById("selectedCallSummary").innerHTML = `
     ${summaryTile("Selected Call", call.call_id || "No call selected", call.room_id || "", "The currently selected LiveKit call/session. Click a call on the left to inspect its transcript timeline and provider metrics.")}
-    ${summaryTile("Deepgram Events", formatCount(deepgram?.events), `${formatCount(deepgram?.final_events)} final`, "Total Deepgram transcript events received for this call. Events include partial and final transcript updates.")}
-    ${summaryTile("Speechmatics Events", formatCount(speechmatics?.events), `${formatCount(speechmatics?.final_events)} final`, "Total Speechmatics transcript events received for this call. Events include partial and final transcript updates.")}
-    ${summaryTile("Avg Time Delta", formatDelta(delta), "Speechmatics avg minus Deepgram avg", "Average elapsed event time difference. Positive means Speechmatics events arrived later on average; negative means Speechmatics arrived earlier.")}
+    ${providerTiles}
   `;
 }
 
 function renderQualityComparison() {
-  const deepgram = state.providers.deepgram;
-  const speechmatics = state.providers.speechmatics;
-  const dgRewriteRate = rewriteRate(deepgram);
-  const smRewriteRate = rewriteRate(speechmatics);
-  const latencyWinner = providerWithLowerValue(deepgram?.avg_final_latency_ms, speechmatics?.avg_final_latency_ms);
-  const stabilityWinner = providerWithHigherValue(deepgram?.transcript_stability, speechmatics?.transcript_stability);
+  const providers = providerNames();
+  const latencyWinner = providerWithBestValue(providers, (provider) => state.providers[provider]?.avg_final_latency_ms, "lower");
+  const stabilityWinner = providerWithBestValue(providers, (provider) => state.providers[provider]?.transcript_stability, "higher");
+  const werTiles = providers.map((provider) => {
+    const label = providerLabel(provider);
+    return comparisonTile(`${label} Call WER`, formatPercent(state.callProviderWer[provider]?.wer), `${formatCount(state.callProviderSegments[provider])} final segments`, `${label} word error rate against the saved whole-call human reference transcript.`);
+  }).join("");
+  const streamingTiles = providers.map((provider) => {
+    const stats = state.providers[provider];
+    const label = providerLabel(provider);
+    return comparisonTile(`${label} Streaming`, streamingSummary(stats), `rewrite rate ${formatPercent(rewriteRate(stats))}`, `${label} streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.`);
+  }).join("");
+  const firstPartialTiles = providers.map((provider) => {
+    const stats = state.providers[provider];
+    const label = providerLabel(provider);
+    return comparisonTile(`${label} First Partial`, formatMs(stats?.first_partial_latency_ms), `first final ${formatMs(stats?.first_final_latency_ms)}`, `Elapsed time from first mirrored audio frame to ${label}'s first partial transcript. The hint shows time to first final transcript.`);
+  }).join("");
 
   document.getElementById("qualityComparison").innerHTML = `
-    ${comparisonTile("Deepgram Call WER", formatPercent(state.callProviderWer.deepgram?.wer), `${formatCount(state.callProviderSegments.deepgram)} final segments`, "Deepgram word error rate against the saved whole-call human reference transcript.")}
-    ${comparisonTile("Speechmatics Call WER", formatPercent(state.callProviderWer.speechmatics?.wer), `${formatCount(state.callProviderSegments.speechmatics)} final segments`, "Speechmatics word error rate against the saved whole-call human reference transcript.")}
-    ${comparisonTile("Latency Winner", latencyWinner, `${formatMs(deepgram?.avg_final_latency_ms)} vs ${formatMs(speechmatics?.avg_final_latency_ms)}`, "Compares average elapsed transcript event time for Deepgram and Speechmatics in this call. Lower is treated as faster.")}
-    ${comparisonTile("Stability Winner", stabilityWinner, `${formatPercent(deepgram?.transcript_stability)} vs ${formatPercent(speechmatics?.transcript_stability)}`, "Compares how often partial transcripts changed. Higher stability means fewer partial rewrites.")}
-    ${comparisonTile("Deepgram Streaming", streamingSummary(deepgram), `rewrite rate ${formatPercent(dgRewriteRate)}`, "Deepgram streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.")}
-    ${comparisonTile("Speechmatics Streaming", streamingSummary(speechmatics), `rewrite rate ${formatPercent(smRewriteRate)}`, "Speechmatics streaming quality based on partial transcript stability. A rewrite is counted when a partial update changes from the previous partial.")}
-    ${comparisonTile("Deepgram First Partial", formatMs(deepgram?.first_partial_latency_ms), `first final ${formatMs(deepgram?.first_final_latency_ms)}`, "Elapsed time from first mirrored audio frame to Deepgram's first partial transcript. The hint shows time to first final transcript.")}
-    ${comparisonTile("Speechmatics First Partial", formatMs(speechmatics?.first_partial_latency_ms), `first final ${formatMs(speechmatics?.first_final_latency_ms)}`, "Elapsed time from first mirrored audio frame to Speechmatics' first partial transcript. The hint shows time to first final transcript.")}
+    ${werTiles}
+    ${comparisonTile("Latency Winner", latencyWinner.label, latencyWinner.hint, "Compares average elapsed transcript event time for providers in this call. Lower is treated as faster.")}
+    ${comparisonTile("Stability Winner", stabilityWinner.label, stabilityWinner.hint, "Compares how often partial transcripts changed. Higher stability means fewer partial rewrites.")}
+    ${streamingTiles}
+    ${firstPartialTiles}
   `;
 }
 
@@ -334,10 +341,13 @@ function renderAllCallsWer() {
     return;
   }
   const providers = summary.providers || {};
+  const providerTiles = Object.keys(providers).sort().map((provider) => {
+    const label = providerLabel(provider);
+    return summaryTile(`${label} All-Calls WER`, formatPercent(providers[provider]?.wer), `${formatCount(providers[provider]?.turns)} turns`, `${label} aggregate WER against all saved human reference transcripts.`);
+  }).join("");
   document.getElementById("allCallsWer").innerHTML = `
     ${summaryTile("Reviewed Calls", formatCount(summary.reviewed_calls), `${formatCount(summary.reviewed_turns)} turns`, "Calls and turns that have saved human reference transcripts.")}
-    ${summaryTile("Deepgram All-Calls WER", formatPercent(providers.deepgram?.wer), `${formatCount(providers.deepgram?.turns)} turns`, "Deepgram aggregate WER against all saved human reference transcripts.")}
-    ${summaryTile("Speechmatics All-Calls WER", formatPercent(providers.speechmatics?.wer), `${formatCount(providers.speechmatics?.turns)} turns`, "Speechmatics aggregate WER against all saved human reference transcripts.")}
+    ${providerTiles}
   `;
 }
 
@@ -347,13 +357,15 @@ function renderCallReference() {
     container.innerHTML = "";
     return;
   }
+  const finalCounts = providerNames().map((provider) => `
+    <span>${escapeHtml(providerLabel(provider))} finals ${formatCount(state.callProviderSegments[provider])}</span>
+  `).join("");
   container.innerHTML = `
     <div class="rounded border border-zinc-800 bg-zinc-950 p-3">
       <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div class="font-medium">Call-Level Reference</div>
         <div class="flex flex-wrap gap-2 text-xs text-zinc-400">
-          <span>Deepgram finals ${formatCount(state.callProviderSegments.deepgram)}</span>
-          <span>Speechmatics finals ${formatCount(state.callProviderSegments.speechmatics)}</span>
+          ${finalCounts}
         </div>
       </div>
       <label class="mb-1 block text-xs uppercase text-zinc-500" for="call-reference-input">Human Reference</label>
@@ -382,9 +394,8 @@ function renderReferenceTurns() {
     return;
   }
   container.innerHTML = `
-    <div class="grid gap-3 md:grid-cols-2">
-      ${providerSegmentsCard("deepgram")}
-      ${providerSegmentsCard("speechmatics")}
+    <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      ${providerNames().map((provider) => providerSegmentsCard(provider)).join("")}
     </div>
   `;
 }
@@ -396,7 +407,7 @@ function providerSegmentsCard(provider) {
   return `
     <div class="rounded border border-zinc-800 bg-zinc-950 p-3">
       <div class="mb-2 flex items-center justify-between">
-        <div class="font-medium">${escapeHtml(provider)}</div>
+        <div class="font-medium">${escapeHtml(providerLabel(provider))}</div>
         <div class="text-xs text-zinc-400">${segments.length} final segments</div>
       </div>
       <div class="space-y-2">
@@ -480,8 +491,12 @@ function infoIcon(description) {
 }
 
 function renderComparison() {
-  document.getElementById("deepgramTranscript").textContent = state.transcripts.deepgram || "";
-  document.getElementById("speechmaticsTranscript").textContent = state.transcripts.speechmatics || "";
+  document.getElementById("transcriptComparison").innerHTML = providerNames().map((provider) => `
+    <div>
+      <div class="mb-2 text-xs uppercase text-zinc-500">${escapeHtml(providerLabel(provider))}</div>
+      <div class="min-h-32 rounded bg-zinc-950 p-3 text-sm leading-6">${escapeHtml(state.transcripts[provider] || "")}</div>
+    </div>
+  `).join("") || `<div class="text-zinc-500">Waiting for transcripts</div>`;
 }
 
 function lastFinalTranscript(provider) {
@@ -536,7 +551,7 @@ function timelineGroups(events) {
 
 function timelineGroupCard(group) {
   const card = document.createElement("div");
-  const providerClass = group.provider === "deepgram" ? "border-sky-900/80" : "border-amber-900/80";
+  const providerClass = providerMeta(group.provider).borderClass;
   const partials = group.events.filter((event) => !event.is_final);
   const finals = group.events.filter((event) => event.is_final);
   const eventIds = group.events.map((event) => event.id).filter((id) => id !== null && id !== undefined);
@@ -659,10 +674,15 @@ function timelineOrderValue(event) {
 }
 
 function renderChart() {
-  const maxPoints = Math.max(state.latency.deepgram.length, state.latency.speechmatics.length);
+  const providers = providerNames().filter((provider) => (state.latency[provider] || []).length);
+  const maxPoints = Math.max(0, ...providers.map((provider) => state.latency[provider].length));
   latencyChart.data.labels = Array.from({ length: maxPoints }, (_, i) => i + 1);
-  latencyChart.data.datasets[0].data = state.latency.deepgram;
-  latencyChart.data.datasets[1].data = state.latency.speechmatics;
+  latencyChart.data.datasets = providers.map((provider) => ({
+    label: providerLabel(provider),
+    data: state.latency[provider] || [],
+    borderColor: providerMeta(provider).color,
+    tension: 0.25,
+  }));
   latencyChart.update();
 }
 
@@ -710,16 +730,52 @@ function streamingSummary(stats) {
   return `${formatPercent(stats.transcript_stability)} stable`;
 }
 
-function providerWithLowerValue(deepgramValue, speechmaticsValue) {
-  if (deepgramValue === null || deepgramValue === undefined || speechmaticsValue === null || speechmaticsValue === undefined) return "n/a";
-  if (deepgramValue === speechmaticsValue) return "Tie";
-  return deepgramValue < speechmaticsValue ? "Deepgram" : "Speechmatics";
+function providerNames() {
+  return Array.from(new Set([
+    ...Object.keys(state.providers || {}),
+    ...Object.keys(state.transcripts || {}),
+    ...Object.keys(state.latency || {}),
+    ...Object.keys(state.callProviderSegments || {}),
+    ...Object.keys(state.callProviderWer || {}),
+    ...state.events.map((event) => event.provider).filter(Boolean),
+  ])).sort((a, b) => providerLabel(a).localeCompare(providerLabel(b)));
 }
 
-function providerWithHigherValue(deepgramValue, speechmaticsValue) {
-  if (deepgramValue === null || deepgramValue === undefined || speechmaticsValue === null || speechmaticsValue === undefined) return "n/a";
-  if (deepgramValue === speechmaticsValue) return "Tie";
-  return deepgramValue > speechmaticsValue ? "Deepgram" : "Speechmatics";
+function providerMeta(provider) {
+  const normalized = String(provider || "").toLowerCase();
+  return PROVIDER_META[normalized] || {
+    label: titleCaseProvider(normalized || "unknown"),
+    color: colorForProvider(normalized),
+    borderClass: "border-violet-900/80",
+  };
+}
+
+function providerLabel(provider) {
+  return providerMeta(provider).label;
+}
+
+function titleCaseProvider(provider) {
+  return String(provider || "unknown").replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function colorForProvider(provider) {
+  let hash = 0;
+  for (const char of String(provider || "provider")) hash = (hash * 31 + char.charCodeAt(0)) % 360;
+  return `hsl(${hash} 78% 62%)`;
+}
+
+function providerWithBestValue(providers, valueForProvider, direction) {
+  const values = providers
+    .map((provider) => ({ provider, value: valueForProvider(provider) }))
+    .filter((item) => item.value !== null && item.value !== undefined);
+  if (!values.length) return { label: "n/a", hint: "No comparable provider values" };
+  values.sort((a, b) => direction === "lower" ? a.value - b.value : b.value - a.value);
+  const best = values[0];
+  const tie = values.length > 1 && Number(values[0].value) === Number(values[1].value);
+  return {
+    label: tie ? "Tie" : providerLabel(best.provider),
+    hint: values.map((item) => `${providerLabel(item.provider)} ${direction === "lower" ? formatMs(item.value) : formatPercent(item.value)}`).join(" vs "),
+  };
 }
 
 function formatMs(value) {
