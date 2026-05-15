@@ -125,9 +125,9 @@ def render_call_report_html(report: dict[str, object]) -> str:
     .grid {{ display: grid; gap: 14px; }}
     .summary {{ grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 18px; }}
     .cards {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
-    .tile, .section {{ background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 18px; }}
+    .tile, .section {{ background: #fff; border: 1px solid #e4e4e7; border-radius: 10px; padding: 18px; color: #18181b; }}
     .tile-label {{ color: #71717a; font-size: 11px; font-weight: 700; text-transform: uppercase; }}
-    .tile-value {{ margin-top: 6px; font-size: 20px; font-weight: 750; }}
+    .tile-value {{ margin-top: 6px; min-height: 26px; color: #0f172a; font-size: 20px; font-weight: 750; }}
     .section {{ margin-top: 18px; }}
     table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
     th {{ color: #52525b; text-align: left; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #e4e4e7; padding: 10px 8px; }}
@@ -135,6 +135,10 @@ def render_call_report_html(report: dict[str, object]) -> str:
     .provider {{ font-weight: 750; }}
     .score {{ display: inline-block; min-width: 52px; border-radius: 999px; padding: 4px 9px; text-align: center; font-weight: 750; background: #dcfce7; color: #166534; }}
     .muted {{ color: #71717a; }}
+    .metric-list {{ display: grid; gap: 5px; }}
+    .metric-line {{ display: flex; justify-content: space-between; gap: 12px; white-space: nowrap; }}
+    .metric-provider {{ color: #52525b; font-weight: 700; }}
+    .metric-value {{ color: #18181b; font-weight: 700; }}
     .transcript {{ max-height: 220px; overflow: auto; white-space: pre-wrap; background: #fafafa; border: 1px solid #e4e4e7; border-radius: 8px; padding: 12px; font-size: 12px; line-height: 1.55; }}
     .actions {{ margin-top: 18px; display: flex; justify-content: flex-end; }}
     button {{ border: 0; border-radius: 8px; background: #2563eb; color: #fff; padding: 10px 14px; font-weight: 700; cursor: pointer; }}
@@ -428,15 +432,16 @@ def render_overall_report_html(report: dict[str, object]) -> str:
         <thead>
           <tr>
             <th>Call</th>
-            <th>Best WER</th>
+            <th>WER by Provider</th>
+            <th>Latency by Provider</th>
+            <th>Finals by Provider</th>
             <th>Fastest</th>
             <th>Most Stable</th>
             <th>Providers</th>
-            <th>Finals</th>
           </tr>
         </thead>
         <tbody>
-          {''.join(_call_breakdown_row(call) for call in calls) or '<tr><td colspan="6" class="muted">No calls available.</td></tr>'}
+          {''.join(_call_breakdown_row(call) for call in calls) or '<tr><td colspan="7" class="muted">No calls available.</td></tr>'}
         </tbody>
       </table>
     </section>
@@ -575,18 +580,31 @@ def _overall_provider_row(provider: dict[str, Any]) -> str:
 
 def _call_breakdown_row(call: dict[str, Any]) -> str:
     providers = list(call.get("providers") or [])
-    finals = sum(int(provider.get("final_events") or 0) for provider in providers)
     winners = call.get("winners") or {}
     return f"""
       <tr>
         <td>{_e(call.get("call_id"))}</td>
-        <td>{_e(winners.get("wer") or "n/a")}</td>
+        <td>{_provider_metric_list(providers, "call_wer", formatter=_percent)}</td>
+        <td>{_provider_metric_list(providers, "avg_latency_ms", formatter=_ms)}</td>
+        <td>{_provider_metric_list(providers, "final_events", formatter=lambda value: _e(value if value is not None else 0))}</td>
         <td>{_e(winners.get("latency") or "n/a")}</td>
         <td>{_e(winners.get("stability") or "n/a")}</td>
         <td>{_e(", ".join(str(provider.get("provider") or "").title() for provider in providers))}</td>
-        <td>{_e(finals)}</td>
       </tr>
     """
+
+
+def _provider_metric_list(providers: list[dict[str, Any]], key: str, *, formatter) -> str:
+    if not providers:
+        return '<span class="muted">n/a</span>'
+    lines = []
+    for provider in sorted(providers, key=lambda item: str(item.get("provider") or "")):
+        name = str(provider.get("provider") or "unknown").title()
+        value = provider.get(key)
+        lines.append(
+            f'<div class="metric-line"><span class="metric-provider">{_e(name)}</span><span class="metric-value">{formatter(value)}</span></div>'
+        )
+    return f'<div class="metric-list">{"".join(lines)}</div>'
 
 
 def _accuracy_insight(providers: list[dict[str, Any]], report: dict[str, Any]) -> str:

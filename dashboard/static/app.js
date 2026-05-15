@@ -1,3 +1,14 @@
+const DEFAULT_REPORT_FILTERS = {
+  date_from: "",
+  date_to: "",
+  search: "",
+  provider: "",
+  primary_provider: "",
+  secondary_provider: "",
+  limit: "500",
+  reviewed_only: false,
+};
+
 const state = {
   calls: new Map(),
   selectedCallId: null,
@@ -17,6 +28,7 @@ const state = {
   ingestCounter: 0,
   settings: null,
   settingsMeta: null,
+  reportFilters: loadSavedReportFilters(),
 };
 
 const PROVIDER_META = {
@@ -228,16 +240,18 @@ function renderSettings() {
 
 function renderReportFilters() {
   const providers = state.settingsMeta?.providers || ["deepgram", "speechmatics", "soniox"];
+  const filters = state.reportFilters || DEFAULT_REPORT_FILTERS;
   document.getElementById("reportFilterPanel").innerHTML = `
-    ${reportTextField("date_from", "From Date", "", "date")}
-    ${reportTextField("date_to", "To Date", "", "date")}
-    ${reportTextField("search", "Call or Room Search", "", "text")}
-    ${reportSelectField("provider", "Provider Included", "", providers)}
-    ${reportSelectField("primary_provider", "Primary Provider", "", providers)}
-    ${reportSelectField("secondary_provider", "Secondary Provider", "", providers)}
-    ${reportSelectField("limit", "Latest Calls Limit", "500", ["50", "100", "250", "500", "1000"])}
-    ${reportCheckboxField("reviewed_only", "Reviewed Calls Only", false)}
+    ${reportTextField("date_from", "From Date", filters.date_from, "date")}
+    ${reportTextField("date_to", "To Date", filters.date_to, "date")}
+    ${reportTextField("search", "Call or Room Search", filters.search, "text")}
+    ${reportSelectField("provider", "Provider Included", filters.provider, providers)}
+    ${reportSelectField("primary_provider", "Primary Provider", filters.primary_provider, providers)}
+    ${reportSelectField("secondary_provider", "Secondary Provider", filters.secondary_provider, providers)}
+    ${reportSelectField("limit", "Latest Calls Limit", filters.limit, ["50", "100", "250", "500", "1000"])}
+    ${reportCheckboxField("reviewed_only", "Reviewed Calls Only", filters.reviewed_only)}
   `;
+  bindReportFilterPersistence();
 }
 
 async function saveSettings() {
@@ -290,12 +304,11 @@ function exportSelectedReport() {
 
 function exportOverallReport() {
   const params = new URLSearchParams();
-  document.querySelectorAll("[data-report-filter]").forEach((input) => {
-    if (input.type === "checkbox") {
-      if (input.checked) params.set(input.dataset.reportFilter, "true");
-      return;
-    }
-    if (input.value) params.set(input.dataset.reportFilter, input.value);
+  state.reportFilters = collectReportFilters();
+  saveReportFilters(state.reportFilters);
+  Object.entries(state.reportFilters).forEach(([key, value]) => {
+    if (value === "" || value === false || value === null || value === undefined) return;
+    params.set(key, String(value));
   });
   window.open(`/api/benchmark/report.html${params.toString() ? `?${params.toString()}` : ""}`, "_blank", "noopener");
   closeReportFiltersModal();
@@ -611,10 +624,14 @@ function checkboxField(name, label, value) {
 }
 
 function reportTextField(name, label, value, type) {
+  const isDate = type === "date";
   return `
     <label class="grid gap-1">
       <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
-      <input data-report-filter="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value || "")}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100" />
+      <span class="flex gap-2">
+        <input data-report-filter="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value || "")}" class="min-w-0 flex-1 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100" />
+        ${isDate ? `<button type="button" data-date-trigger="${escapeAttr(name)}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-200 hover:bg-zinc-800" title="Open calendar">Calendar</button>` : ""}
+      </span>
     </label>
   `;
 }
@@ -638,6 +655,57 @@ function reportCheckboxField(name, label, value) {
       <input data-report-filter="${escapeAttr(name)}" type="checkbox" ${value ? "checked" : ""} class="h-4 w-4 accent-sky-600" />
     </label>
   `;
+}
+
+function collectReportFilters() {
+  const filters = { ...DEFAULT_REPORT_FILTERS };
+  document.querySelectorAll("[data-report-filter]").forEach((input) => {
+    if (input.type === "checkbox") filters[input.dataset.reportFilter] = input.checked;
+    else filters[input.dataset.reportFilter] = input.value;
+  });
+  return filters;
+}
+
+function bindReportFilterPersistence() {
+  document.querySelectorAll("[data-report-filter]").forEach((input) => {
+    input.addEventListener("change", persistCurrentReportFilters);
+    input.addEventListener("input", persistCurrentReportFilters);
+    if (input.type === "date") {
+      input.addEventListener("focus", () => openDateInput(input));
+      input.addEventListener("click", () => openDateInput(input));
+    }
+  });
+  document.querySelectorAll("[data-date-trigger]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const input = document.querySelector(`[data-report-filter="${button.dataset.dateTrigger}"]`);
+      if (input) openDateInput(input);
+    });
+  });
+}
+
+function persistCurrentReportFilters() {
+  state.reportFilters = collectReportFilters();
+  saveReportFilters(state.reportFilters);
+}
+
+function openDateInput(input) {
+  if (typeof input.showPicker === "function") {
+    input.showPicker();
+  }
+  input.focus();
+}
+
+function loadSavedReportFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("benchmarkReportFilters") || "{}");
+    return { ...DEFAULT_REPORT_FILTERS, ...saved };
+  } catch {
+    return { ...DEFAULT_REPORT_FILTERS };
+  }
+}
+
+function saveReportFilters(filters) {
+  localStorage.setItem("benchmarkReportFilters", JSON.stringify(filters));
 }
 
 function comparisonTile(label, value, hint, description) {
