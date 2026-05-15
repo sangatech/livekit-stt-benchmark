@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import or_
 
 from stt.base_provider import STTTranscriptEvent
 
@@ -94,22 +95,7 @@ class BenchmarkRepository:
                 "room_id": call.room_id,
                 "started_at": call.started_at.timestamp() if call.started_at else None,
                 "ended_at": call.ended_at.timestamp() if call.ended_at else None,
-                "events": [
-                    {
-                        "id": event.id,
-                        "provider": event.provider,
-                        "transcript": event.transcript,
-                        "is_final": event.is_final,
-                        "confidence": event.confidence,
-                        "timestamp": event.timestamp.timestamp() if event.timestamp else None,
-                        "latency_ms": event.latency_ms,
-                        "sequence_id": event.sequence_id,
-                        "call_id": call.call_id,
-                        "room_id": call.room_id,
-                        "raw": event.raw_event or {},
-                    }
-                    for event in events
-                ],
+                "events": [_event_dict(event, call) for event in events],
             }
 
     def call_turns(self, call_id: str) -> dict[str, object] | None:
@@ -144,6 +130,94 @@ class BenchmarkRepository:
                 "call_provider_wer": call_level_wer,
                 "wer_summary": _wer_summary(turns),
             }
+
+    def report_calls(
+        self,
+        *,
+        limit: int = 500,
+        started_from: datetime | None = None,
+        started_to: datetime | None = None,
+        search: str = "",
+        provider: str = "",
+        primary_provider: str = "",
+        secondary_provider: str = "",
+        reviewed_only: bool = False,
+    ) -> list[tuple[dict[str, object], dict[str, object]]]:
+        with self._factory() as session:
+            query = session.query(BenchmarkCall)
+            if started_from is not None:
+                query = query.filter(BenchmarkCall.started_at >= started_from)
+            if started_to is not None:
+                query = query.filter(BenchmarkCall.started_at <= started_to)
+            search = search.strip()
+            if search:
+                pattern = f"%{search}%"
+                query = query.filter(or_(BenchmarkCall.call_id.ilike(pattern), BenchmarkCall.room_id.ilike(pattern)))
+            calls = query.order_by(BenchmarkCall.started_at.desc()).limit(max(1, min(limit, 1000))).all()
+            call_ids = [call.id for call in calls]
+            if not call_ids:
+                return []
+
+            events = (
+                session.query(BenchmarkTranscriptEvent)
+                .filter(BenchmarkTranscriptEvent.call_id_fk.in_(call_ids))
+                .order_by(BenchmarkTranscriptEvent.timestamp.asc(), BenchmarkTranscriptEvent.id.asc())
+                .all()
+            )
+            references = (
+                session.query(BenchmarkReferenceTranscript)
+                .filter(BenchmarkReferenceTranscript.call_id_fk.in_(call_ids))
+                .all()
+            )
+
+            events_by_call: dict[int, list[BenchmarkTranscriptEvent]] = {}
+            for event in events:
+                events_by_call.setdefault(event.call_id_fk, []).append(event)
+
+            references_by_call: dict[int, dict[int, str]] = {}
+            for reference in references:
+                references_by_call.setdefault(reference.call_id_fk, {})[reference.turn_index] = reference.reference_transcript
+
+            report_calls = []
+            for call in calls:
+                call_events = events_by_call.get(call.id, [])
+                call_references = references_by_call.get(call.id, {})
+                call_providers = {event.provider for event in call_events}
+                required_providers = {
+                    value
+                    for value in (provider, primary_provider, secondary_provider)
+                    if value
+                }
+                if required_providers and not required_providers.issubset(call_providers):
+                    continue
+                if reviewed_only and not str(call_references.get(-1, "")).strip():
+                    continue
+                final_events = [event for event in call_events if event.is_final]
+                turns = _build_turns(final_events, call_references)
+                call_reference = call_references.get(-1, "")
+                provider_transcripts = _call_level_transcripts(final_events)
+                call_detail = {
+                    "call_id": call.call_id,
+                    "room_id": call.room_id,
+                    "started_at": call.started_at.timestamp() if call.started_at else None,
+                    "ended_at": call.ended_at.timestamp() if call.ended_at else None,
+                    "events": [_event_dict(event, call) for event in call_events],
+                }
+                call_turns = {
+                    "call_id": call.call_id,
+                    "room_id": call.room_id,
+                    "turns": turns,
+                    "call_reference_transcript": call_reference,
+                    "call_provider_transcripts": provider_transcripts,
+                    "call_provider_segments": {
+                        provider: len([event for event in final_events if event.provider == provider])
+                        for provider in sorted({event.provider for event in final_events})
+                    },
+                    "call_provider_wer": _provider_wer(call_reference, provider_transcripts),
+                    "wer_summary": _wer_summary(turns),
+                }
+                report_calls.append((call_detail, call_turns))
+            return report_calls
 
     def save_reference_transcript(self, *, call_id: str, turn_index: int, reference_transcript: str) -> dict[str, object]:
         with self._factory() as session:
@@ -277,6 +351,22 @@ def _build_turns(events: list[BenchmarkTranscriptEvent], references: dict[int, s
             }
         )
     return turns
+
+
+def _event_dict(event: BenchmarkTranscriptEvent, call: BenchmarkCall) -> dict[str, object]:
+    return {
+        "id": event.id,
+        "provider": event.provider,
+        "transcript": event.transcript,
+        "is_final": event.is_final,
+        "confidence": event.confidence,
+        "timestamp": event.timestamp.timestamp() if event.timestamp else None,
+        "latency_ms": event.latency_ms,
+        "sequence_id": event.sequence_id,
+        "call_id": call.call_id,
+        "room_id": call.room_id,
+        "raw": event.raw_event or {},
+    }
 
 
 def _call_level_transcripts(events: list[BenchmarkTranscriptEvent]) -> dict[str, str]:

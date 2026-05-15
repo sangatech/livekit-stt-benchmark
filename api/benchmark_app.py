@@ -4,6 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 from typing import Any
+from datetime import datetime, time, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
@@ -13,7 +14,7 @@ from sqlalchemy.engine import make_url
 
 from benchmark.database import database_url
 from benchmark.engine import BenchmarkEngine
-from benchmark.reporting import build_call_report_data, render_call_report_html
+from benchmark.reporting import build_call_report_data, build_overall_report_data, filtered_wer_summary, render_call_report_html, render_overall_report_html
 from benchmark.repository import BenchmarkRepository
 from benchmark.settings import load_settings, save_settings
 from stt.provider_manager import PROVIDERS
@@ -145,6 +146,73 @@ async def wer_summary() -> dict[str, object]:
     return repository.wer_summary()
 
 
+@app.get("/api/benchmark/report")
+async def overall_report(
+    date_from: str = "",
+    date_to: str = "",
+    search: str = "",
+    provider: str = "",
+    primary_provider: str = "",
+    secondary_provider: str = "",
+    reviewed_only: bool = False,
+    limit: int = 500,
+) -> dict[str, object]:
+    filters = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "search": search,
+        "provider": provider,
+        "primary_provider": primary_provider,
+        "secondary_provider": secondary_provider,
+        "reviewed_only": reviewed_only,
+        "limit": max(1, min(limit, 1000)),
+    }
+    call_reports = []
+    for detail, turns in repository.report_calls(
+        limit=filters["limit"],
+        started_from=_parse_report_date(date_from, end_of_day=False),
+        started_to=_parse_report_date(date_to, end_of_day=True),
+        search=search,
+        provider=_normalize_provider_filter(provider),
+        primary_provider=_normalize_provider_filter(primary_provider),
+        secondary_provider=_normalize_provider_filter(secondary_provider),
+        reviewed_only=reviewed_only,
+    ):
+        call_reports.append(
+            build_call_report_data(
+                call_detail=detail,
+                call_turns=turns,
+                all_calls_wer={},
+            )
+        )
+    all_calls_wer = filtered_wer_summary(call_reports)
+    return build_overall_report_data(call_reports=call_reports, all_calls_wer=all_calls_wer, filters=filters)
+
+
+@app.get("/api/benchmark/report.html", response_class=HTMLResponse)
+async def overall_report_html(
+    date_from: str = "",
+    date_to: str = "",
+    search: str = "",
+    provider: str = "",
+    primary_provider: str = "",
+    secondary_provider: str = "",
+    reviewed_only: bool = False,
+    limit: int = 500,
+) -> HTMLResponse:
+    report = await overall_report(
+        date_from=date_from,
+        date_to=date_to,
+        search=search,
+        provider=provider,
+        primary_provider=primary_provider,
+        secondary_provider=secondary_provider,
+        reviewed_only=reviewed_only,
+        limit=limit,
+    )
+    return HTMLResponse(render_overall_report_html(report))
+
+
 @app.get("/api/benchmark/calls/{call_id}/report")
 async def call_report(call_id: str) -> dict[str, object]:
     detail = repository.call_detail(call_id)
@@ -179,6 +247,26 @@ async def settings() -> dict[str, object]:
 @app.post("/api/settings")
 async def update_settings(payload: dict[str, Any]) -> dict[str, object]:
     return {"settings": save_settings(payload)}
+
+
+def _normalize_provider_filter(value: str) -> str:
+    normalized = value.strip().lower()
+    return "soniox" if normalized == "seniox" else normalized
+
+
+def _parse_report_date(value: str, *, end_of_day: bool) -> datetime | None:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        if len(value) == 10:
+            parsed_date = datetime.strptime(value, "%Y-%m-%d").date()
+            parsed_time = time.max if end_of_day else time.min
+            return datetime.combine(parsed_date, parsed_time, tzinfo=timezone.utc)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"invalid report date: {value}")
 
 
 @app.post("/api/benchmark/events/transcript")

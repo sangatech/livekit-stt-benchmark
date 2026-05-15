@@ -201,6 +201,7 @@ async function loadSettings() {
   state.settings = payload.settings || {};
   state.settingsMeta = payload;
   renderSettings();
+  renderReportFilters();
 }
 
 function renderSettings() {
@@ -222,6 +223,20 @@ function renderSettings() {
     ${numberField("soniox_max_endpoint_delay_ms", "Soniox Endpoint Ms", settings.soniox_max_endpoint_delay_ms, "100", "500", "3000")}
     ${checkboxField("benchmark_publish_events", "Publish Events", settings.benchmark_publish_events)}
     ${textField("benchmark_storage_root", "Storage Root", settings.benchmark_storage_root)}
+  `;
+}
+
+function renderReportFilters() {
+  const providers = state.settingsMeta?.providers || ["deepgram", "speechmatics", "soniox"];
+  document.getElementById("reportFilterPanel").innerHTML = `
+    ${reportTextField("date_from", "From Date", "", "date")}
+    ${reportTextField("date_to", "To Date", "", "date")}
+    ${reportTextField("search", "Call or Room Search", "", "text")}
+    ${reportSelectField("provider", "Provider Included", "", providers)}
+    ${reportSelectField("primary_provider", "Primary Provider", "", providers)}
+    ${reportSelectField("secondary_provider", "Secondary Provider", "", providers)}
+    ${reportSelectField("limit", "Latest Calls Limit", "500", ["50", "100", "250", "500", "1000"])}
+    ${reportCheckboxField("reviewed_only", "Reviewed Calls Only", false)}
   `;
 }
 
@@ -254,12 +269,36 @@ function closeSettingsModal() {
   document.getElementById("settingsModal").classList.remove("flex");
 }
 
+function openReportFiltersModal() {
+  renderReportFilters();
+  document.getElementById("reportFiltersModal").classList.remove("hidden");
+  document.getElementById("reportFiltersModal").classList.add("flex");
+}
+
+function closeReportFiltersModal() {
+  document.getElementById("reportFiltersModal").classList.add("hidden");
+  document.getElementById("reportFiltersModal").classList.remove("flex");
+}
+
 function exportSelectedReport() {
   if (!state.selectedCallId) {
     window.alert("Select a call before exporting a report.");
     return;
   }
   window.open(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/report.html`, "_blank", "noopener");
+}
+
+function exportOverallReport() {
+  const params = new URLSearchParams();
+  document.querySelectorAll("[data-report-filter]").forEach((input) => {
+    if (input.type === "checkbox") {
+      if (input.checked) params.set(input.dataset.reportFilter, "true");
+      return;
+    }
+    if (input.value) params.set(input.dataset.reportFilter, input.value);
+  });
+  window.open(`/api/benchmark/report.html${params.toString() ? `?${params.toString()}` : ""}`, "_blank", "noopener");
+  closeReportFiltersModal();
 }
 
 function rebuildSelectedState(events) {
@@ -567,6 +606,36 @@ function checkboxField(name, label, value) {
     <label class="flex items-center justify-between gap-3 rounded border border-zinc-800 bg-zinc-950 px-2 py-1">
       <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
       <input data-setting="${escapeAttr(name)}" type="checkbox" ${value ? "checked" : ""} class="h-4 w-4 accent-sky-600" />
+    </label>
+  `;
+}
+
+function reportTextField(name, label, value, type) {
+  return `
+    <label class="grid gap-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <input data-report-filter="${escapeAttr(name)}" type="${escapeAttr(type)}" value="${escapeAttr(value || "")}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100" />
+    </label>
+  `;
+}
+
+function reportSelectField(name, label, value, options) {
+  return `
+    <label class="grid gap-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <select data-report-filter="${escapeAttr(name)}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100">
+        <option value="">Any</option>
+        ${options.map((option) => `<option value="${escapeAttr(option)}" ${String(option) === String(value) ? "selected" : ""}>${escapeHtml(providerOrValueLabel(option))}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function reportCheckboxField(name, label, value) {
+  return `
+    <label class="flex items-center justify-between gap-3 rounded border border-zinc-800 bg-zinc-950 px-2 py-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <input data-report-filter="${escapeAttr(name)}" type="checkbox" ${value ? "checked" : ""} class="h-4 w-4 accent-sky-600" />
     </label>
   `;
 }
@@ -967,13 +1036,22 @@ document.getElementById("refreshWer").addEventListener("click", async () => {
 });
 document.getElementById("saveSettings").addEventListener("click", saveSettings);
 document.getElementById("exportReport").addEventListener("click", exportSelectedReport);
+document.getElementById("exportOverallReport").addEventListener("click", openReportFiltersModal);
+document.getElementById("runOverallExport").addEventListener("click", exportOverallReport);
 document.getElementById("openSettings").addEventListener("click", openSettingsModal);
 document.getElementById("closeSettings").addEventListener("click", closeSettingsModal);
+document.getElementById("closeReportFilters").addEventListener("click", closeReportFiltersModal);
 document.getElementById("settingsModal").addEventListener("click", (event) => {
   if (event.target.id === "settingsModal") closeSettingsModal();
 });
+document.getElementById("reportFiltersModal").addEventListener("click", (event) => {
+  if (event.target.id === "reportFiltersModal") closeReportFiltersModal();
+});
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeSettingsModal();
+  if (event.key === "Escape") {
+    closeSettingsModal();
+    closeReportFiltersModal();
+  }
 });
 
 loadSettings();
