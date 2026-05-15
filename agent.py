@@ -234,7 +234,14 @@ async def _safe_publish_transcript(publisher: BenchmarkHttpPublisher, payload: d
 
 if __name__ == "__main__":
     cli.run_app(
+        
         WorkerOptions(
+            port=int(os.environ.get("LIVEKIT_PORT", 7880)),
             entrypoint_fnc=entrypoint,
-        ),
+            num_idle_processes=3,
+            load_threshold=0.65,
+            ws_url=os.environ.get("LIVEKIT_URL"),
+            api_key=os.environ.get("LIVEKIT_API_KEY"),
+            api_secret=os.environ.get("LIVEKIT_API_SECRET"),
+        )
     )
