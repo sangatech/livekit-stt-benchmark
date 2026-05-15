@@ -15,6 +15,8 @@ const state = {
   referenceError: "",
   eventKeys: new Set(),
   ingestCounter: 0,
+  settings: null,
+  settingsMeta: null,
 };
 
 const PROVIDER_META = {
@@ -192,6 +194,55 @@ async function loadAllCallsWer() {
     state.allCallsWer = { error: error.message };
   }
   renderAllCallsWer();
+}
+
+async function loadSettings() {
+  const payload = await fetchJson("/api/settings");
+  state.settings = payload.settings || {};
+  state.settingsMeta = payload;
+  renderSettings();
+}
+
+function renderSettings() {
+  const settings = state.settings || {};
+  const providers = state.settingsMeta?.providers || ["deepgram", "speechmatics", "soniox"];
+  const modes = state.settingsMeta?.modes || ["production", "shadow", "comparison"];
+  const deepgramModels = uniqueOptions([settings.deepgram_stt_model, ...(state.settingsMeta?.deepgram_models || [])]);
+  const sonioxModels = uniqueOptions([settings.soniox_stt_model, ...(state.settingsMeta?.soniox_models || [])]);
+  const speechmaticsPoints = state.settingsMeta?.speechmatics_operating_points || ["enhanced", "standard"];
+
+  document.getElementById("settingsPanel").innerHTML = `
+    ${selectField("stt_benchmark_mode", "Mode", settings.stt_benchmark_mode, modes)}
+    ${selectField("stt_primary_provider", "Primary", settings.stt_primary_provider, providers)}
+    ${selectField("stt_shadow_provider", "Shadow", settings.stt_shadow_provider, providers)}
+    ${comboField("deepgram_stt_model", "Deepgram Model", settings.deepgram_stt_model, deepgramModels)}
+    ${selectField("speechmatics_operating_point", "Speechmatics Quality", settings.speechmatics_operating_point, speechmaticsPoints)}
+    ${numberField("speechmatics_max_delay", "Speechmatics Max Delay", settings.speechmatics_max_delay, "0.1", "0")}
+    ${comboField("soniox_stt_model", "Soniox Model", settings.soniox_stt_model, sonioxModels)}
+    ${numberField("soniox_max_endpoint_delay_ms", "Soniox Endpoint Ms", settings.soniox_max_endpoint_delay_ms, "100", "500", "3000")}
+    ${checkboxField("benchmark_publish_events", "Publish Events", settings.benchmark_publish_events)}
+    ${textField("benchmark_api_url", "Benchmark API URL", settings.benchmark_api_url)}
+    ${textField("benchmark_storage_root", "Storage Root", settings.benchmark_storage_root)}
+  `;
+}
+
+async function saveSettings() {
+  const form = document.getElementById("settingsPanel");
+  const payload = {};
+  form.querySelectorAll("[data-setting]").forEach((input) => {
+    if (input.type === "checkbox") payload[input.dataset.setting] = input.checked;
+    else payload[input.dataset.setting] = input.value;
+  });
+  const status = document.getElementById("settingsStatus");
+  status.textContent = "saving";
+  const response = await fetchJson("/api/settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  state.settings = response.settings || {};
+  status.textContent = "Saved. Applies to new calls.";
+  renderSettings();
 }
 
 function rebuildSelectedState(events) {
@@ -450,6 +501,57 @@ async function fetchJson(url, options) {
     throw new Error(payload.detail || payload.message || `${response.status} ${response.statusText}`);
   }
   return payload;
+}
+
+function selectField(name, label, value, options) {
+  return `
+    <label class="grid gap-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <select data-setting="${escapeAttr(name)}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100">
+        ${options.map((option) => `<option value="${escapeAttr(option)}" ${String(option) === String(value) ? "selected" : ""}>${escapeHtml(providerOrValueLabel(option))}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function comboField(name, label, value, options) {
+  const listId = `${name}-options`;
+  return `
+    <label class="grid gap-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <input data-setting="${escapeAttr(name)}" list="${escapeAttr(listId)}" value="${escapeAttr(value || "")}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100" />
+      <datalist id="${escapeAttr(listId)}">
+        ${options.map((option) => `<option value="${escapeAttr(option)}"></option>`).join("")}
+      </datalist>
+    </label>
+  `;
+}
+
+function numberField(name, label, value, step, min, max = "") {
+  return `
+    <label class="grid gap-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <input data-setting="${escapeAttr(name)}" type="number" value="${escapeAttr(value)}" step="${escapeAttr(step)}" min="${escapeAttr(min)}" ${max ? `max="${escapeAttr(max)}"` : ""} class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100" />
+    </label>
+  `;
+}
+
+function textField(name, label, value) {
+  return `
+    <label class="grid gap-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <input data-setting="${escapeAttr(name)}" value="${escapeAttr(value || "")}" class="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-100" />
+    </label>
+  `;
+}
+
+function checkboxField(name, label, value) {
+  return `
+    <label class="flex items-center justify-between gap-3 rounded border border-zinc-800 bg-zinc-950 px-2 py-1">
+      <span class="uppercase text-zinc-500">${escapeHtml(label)}</span>
+      <input data-setting="${escapeAttr(name)}" type="checkbox" ${value ? "checked" : ""} class="h-4 w-4 accent-sky-600" />
+    </label>
+  `;
 }
 
 function comparisonTile(label, value, hint, description) {
@@ -754,6 +856,10 @@ function providerLabel(provider) {
   return providerMeta(provider).label;
 }
 
+function providerOrValueLabel(value) {
+  return PROVIDER_META[String(value || "").toLowerCase()] ? providerLabel(value) : titleCaseProvider(value);
+}
+
 function titleCaseProvider(provider) {
   return String(provider || "unknown").replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
@@ -814,6 +920,10 @@ function formatTimelineTime(event) {
   return formatDateTime(event.timestamp);
 }
 
+function uniqueOptions(options) {
+  return Array.from(new Set(options.filter((option) => option !== null && option !== undefined && String(option).trim()).map(String)));
+}
+
 function formatPercent(value) {
   return value === null || value === undefined ? "n/a" : `${(Number(value) * 100).toFixed(0)}%`;
 }
@@ -838,7 +948,9 @@ document.getElementById("refreshWer").addEventListener("click", async () => {
   }
   await loadAllCallsWer();
 });
+document.getElementById("saveSettings").addEventListener("click", saveSettings);
 
+loadSettings();
 loadCalls();
 loadAllCallsWer();
 connect();

@@ -4,6 +4,8 @@ import os
 import time
 from typing import Any, AsyncIterator
 
+from benchmark.settings import setting
+
 from .base_provider import AudioFrameEnvelope, STTProvider, STTTranscriptEvent, monotonic_latency_ms
 from .keyterms import load_session_keyterms
 
@@ -13,14 +15,15 @@ class DeepgramProvider(STTProvider):
 
     def __init__(self, *, call_id: str | None = None, room_id: str | None = None) -> None:
         super().__init__(call_id=call_id, room_id=room_id)
-        self.model = os.getenv("DEEPGRAM_STT_MODEL", "nova-2")
+        self.model = str(setting("deepgram_stt_model", os.getenv("DEEPGRAM_STT_MODEL", "nova-2")))
 
     def livekit_stt(self) -> Any:
         from livekit.plugins import deepgram
 
-        benchmark_mode = os.getenv("STT_BENCHMARK_MODE", "production").lower()
+        benchmark_mode = str(setting("stt_benchmark_mode", os.getenv("STT_BENCHMARK_MODE", "production"))).lower()
         interim_default = "true" if benchmark_mode in {"shadow", "comparison"} else "false"
-        interim_results = os.getenv("DEEPGRAM_INTERIM_RESULTS", interim_default).lower() == "true"
+        configured_interim = setting("deepgram_interim_results", os.getenv("DEEPGRAM_INTERIM_RESULTS", interim_default))
+        interim_results = interim_default.lower() == "true" if configured_interim is None else bool(configured_interim)
         keyterms = load_session_keyterms(provider=self.provider_name, model=self.model)
         return deepgram.STT(
             model=self.model,

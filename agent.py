@@ -17,6 +17,7 @@ from livekit.agents.voice import Agent
 from benchmark.client import BenchmarkHttpPublisher
 from livekit.plugins import noise_cancellation, openai, silero
 from livekit.plugins.turn_detector.english import EnglishModel
+from benchmark.settings import setting
 from stt.benchmarking_stt import BenchmarkingSTT
 from stt.provider_manager import BenchmarkMode, STTProviderManager
 
@@ -193,7 +194,7 @@ def _call_id_from_context(ctx: JobContext) -> str:
 
 
 def _attach_benchmark_publisher(*, session: AgentSession, call_id: str, room_id: str, provider: str) -> None:
-    if os.getenv("BENCHMARK_PUBLISH_EVENTS", "true").lower() != "true":
+    if not bool(setting("benchmark_publish_events", os.getenv("BENCHMARK_PUBLISH_EVENTS", "true").lower() == "true")):
         return
 
     publisher = BenchmarkHttpPublisher()

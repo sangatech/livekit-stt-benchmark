@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from enum import Enum
 
+from benchmark.settings import setting
+
 from .base_provider import STTProvider
 from .deepgram_provider import DeepgramProvider
 from .soniox_provider import SonioxProvider
@@ -47,9 +49,11 @@ class STTProviderManager:
         self.room_id = room_id
 
     def select(self) -> ProviderSelection:
-        mode = BenchmarkMode(os.getenv("STT_BENCHMARK_MODE", "production").lower())
-        primary_name = _normalize_provider_name(os.getenv("STT_PRIMARY_PROVIDER", os.getenv("STT_PROVIDER", "deepgram")))
-        secondary_name = _normalize_provider_name(os.getenv("STT_SHADOW_PROVIDER", ""))
+        mode = BenchmarkMode(str(setting("stt_benchmark_mode", os.getenv("STT_BENCHMARK_MODE", "production"))).lower())
+        primary_name = _normalize_provider_name(
+            str(setting("stt_primary_provider", os.getenv("STT_PRIMARY_PROVIDER", os.getenv("STT_PROVIDER", "deepgram"))))
+        )
+        secondary_name = _normalize_provider_name(str(setting("stt_shadow_provider", os.getenv("STT_SHADOW_PROVIDER", ""))))
 
         if not secondary_name:
             secondary_name = "speechmatics" if primary_name == "deepgram" else "deepgram"

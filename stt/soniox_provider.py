@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, AsyncIterator
 
+from benchmark.settings import setting
+
 from .base_provider import AudioFrameEnvelope, STTProvider, STTTranscriptEvent, monotonic_latency_ms
 from .deepgram_provider import _normalize_livekit_event
 from .keyterms import load_session_keyterms
@@ -13,8 +15,8 @@ class SonioxProvider(STTProvider):
 
     def __init__(self, *, call_id: str | None = None, room_id: str | None = None) -> None:
         super().__init__(call_id=call_id, room_id=room_id)
-        self.model = os.getenv("SONIOX_STT_MODEL", "stt-rt-v4")
-        self.max_endpoint_delay_ms = int(os.getenv("SONIOX_MAX_ENDPOINT_DELAY_MS", "500"))
+        self.model = str(setting("soniox_stt_model", os.getenv("SONIOX_STT_MODEL", "stt-rt-v4")))
+        self.max_endpoint_delay_ms = int(setting("soniox_max_endpoint_delay_ms", os.getenv("SONIOX_MAX_ENDPOINT_DELAY_MS", "500")))
 
     def livekit_stt(self) -> Any:
         from livekit.plugins import soniox

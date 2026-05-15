@@ -14,6 +14,8 @@ from sqlalchemy.engine import make_url
 from benchmark.database import database_url
 from benchmark.engine import BenchmarkEngine
 from benchmark.repository import BenchmarkRepository
+from benchmark.settings import load_settings, save_settings
+from stt.provider_manager import PROVIDERS
 
 
 class BroadcastHub:
@@ -140,6 +142,23 @@ async def delete_transcript_events(call_id: str, payload: dict[str, Any]) -> dic
 @app.get("/api/benchmark/wer/summary")
 async def wer_summary() -> dict[str, object]:
     return repository.wer_summary()
+
+
+@app.get("/api/settings")
+async def settings() -> dict[str, object]:
+    return {
+        "settings": load_settings(),
+        "providers": sorted(PROVIDERS),
+        "modes": ["production", "shadow", "comparison"],
+        "deepgram_models": ["nova-2", "nova-3", "nova-2-general"],
+        "speechmatics_operating_points": ["enhanced", "standard"],
+        "soniox_models": ["stt-rt-v4"],
+    }
+
+
+@app.post("/api/settings")
+async def update_settings(payload: dict[str, Any]) -> dict[str, object]:
+    return {"settings": save_settings(payload)}
 
 
 @app.post("/api/benchmark/events/transcript")

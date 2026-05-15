@@ -1,4 +1,5 @@
 .env
+benchmark_settings.json
 __pycache__/
 *.py[cod]
 *$py.class

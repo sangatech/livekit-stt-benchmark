@@ -189,7 +189,12 @@ Deepgram uses its native `keyterms` option; Speechmatics uses `additional_vocab`
 
 ### STT Benchmarking
 
-The original production path remains single-provider. Enable benchmarking with feature flags:
+The original production path remains single-provider. Benchmark mode, provider
+selection, and STT model settings can be changed from the dashboard's
+Benchmark Settings panel. These UI settings are saved to `benchmark_settings.json`
+and apply to new calls. Keep secrets such as provider API keys in `.env`.
+
+You can still seed defaults with environment variables:
 
 ```env
 STT_BENCHMARK_MODE=shadow       # production, shadow, or comparison

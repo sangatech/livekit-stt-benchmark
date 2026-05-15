@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any, AsyncIterator
 
+from benchmark.settings import setting
+
 from .base_provider import AudioFrameEnvelope, STTProvider, STTTranscriptEvent
 from .deepgram_provider import _normalize_livekit_event
 from .keyterms import load_session_keyterms
@@ -13,8 +15,8 @@ class SpeechmaticsProvider(STTProvider):
 
     def __init__(self, *, call_id: str | None = None, room_id: str | None = None) -> None:
         super().__init__(call_id=call_id, room_id=room_id)
-        self.operating_point = os.getenv("SPEECHMATICS_OPERATING_POINT", "enhanced")
-        self.max_delay = float(os.getenv("SPEECHMATICS_MAX_DELAY", "1.5"))
+        self.operating_point = str(setting("speechmatics_operating_point", os.getenv("SPEECHMATICS_OPERATING_POINT", "enhanced")))
+        self.max_delay = float(setting("speechmatics_max_delay", os.getenv("SPEECHMATICS_MAX_DELAY", "1.5")))
 
     def livekit_stt(self) -> Any:
         from livekit.plugins import speechmatics

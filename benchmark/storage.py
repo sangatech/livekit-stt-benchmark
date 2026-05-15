@@ -5,10 +5,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .settings import setting
+
 
 class BenchmarkStorage:
     def __init__(self, *, local_root: str = "calls") -> None:
-        self.local_root = Path(os.getenv("BENCHMARK_STORAGE_ROOT", local_root))
+        self.local_root = Path(str(setting("benchmark_storage_root", os.getenv("BENCHMARK_STORAGE_ROOT", local_root))))
         self.s3_bucket = os.getenv("BENCHMARK_S3_BUCKET")
 
     def write_json(self, call_id: str, name: str, payload: Any) -> str:
