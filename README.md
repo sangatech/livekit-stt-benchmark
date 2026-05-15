@@ -194,16 +194,11 @@ selection, and STT model settings can be changed from the dashboard's
 Benchmark Settings panel. These UI settings are saved to `benchmark_settings.json`
 and apply to new calls. Keep secrets such as provider API keys in `.env`.
 
-You can still seed defaults with environment variables:
+Keep infrastructure settings in `.env`:
 
 ```env
-STT_BENCHMARK_MODE=shadow       # production, shadow, or comparison
-STT_PRIMARY_PROVIDER=deepgram
-STT_SHADOW_PROVIDER=soniox      # or speechmatics
 BENCHMARK_DATABASE_URL=postgresql+psycopg://benchmark:benchmark@localhost:5432/benchmark
 BENCHMARK_API_URL=http://127.0.0.1:8090
-BENCHMARK_PUBLISH_EVENTS=true
-BENCHMARK_STORAGE_ROOT=calls
 BENCHMARK_S3_BUCKET=
 ```
 

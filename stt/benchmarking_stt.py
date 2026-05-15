@@ -119,6 +119,7 @@ class BenchmarkingRecognizeStream(stt.RecognizeStream):
         self._language = language
         self._provider_sequences = {primary_provider: 0, shadow_provider: 0}
         self._first_audio_at: float | None = None
+        self._shadow_audio_disabled = False
         super().__init__(stt=benchmarking_stt, conn_options=conn_options)
 
     async def _run(self) -> None:
@@ -164,16 +165,30 @@ class BenchmarkingRecognizeStream(stt.RecognizeStream):
         async for item in self._input_ch:
             if isinstance(item, stt.RecognizeStream._FlushSentinel):
                 primary_stream.flush()
-                shadow_stream.flush()
+                self._safe_shadow_stream_call(shadow_stream, "flush")
             else:
                 frame = item
                 if self._first_audio_at is None:
                     self._first_audio_at = time.monotonic()
                 primary_stream.push_frame(frame)
-                shadow_stream.push_frame(frame)
+                self._safe_shadow_stream_call(shadow_stream, "push_frame", frame)
 
         primary_stream.end_input()
-        shadow_stream.end_input()
+        self._safe_shadow_stream_call(shadow_stream, "end_input")
+
+    def _safe_shadow_stream_call(self, stream: stt.RecognizeStream, method_name: str, *args: Any) -> None:
+        if self._shadow_audio_disabled:
+            return
+        try:
+            getattr(stream, method_name)(*args)
+        except Exception as exc:
+            self._shadow_audio_disabled = True
+            logger.warning(
+                "disabling shadow STT audio fanout after %s failed provider=%s error=%s",
+                method_name,
+                self._shadow_provider,
+                exc,
+            )
 
     async def _consume_primary(self, stream: stt.RecognizeStream, provider: str) -> None:
         async for event in stream:

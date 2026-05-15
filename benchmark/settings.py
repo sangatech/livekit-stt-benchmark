@@ -22,43 +22,15 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "soniox_stt_model": "stt-rt-v4",
     "soniox_max_endpoint_delay_ms": 500,
     "benchmark_publish_events": True,
-    "benchmark_api_url": "http://127.0.0.1:8090",
     "benchmark_storage_root": "calls",
 }
 
-ENV_KEYS = {
-    "stt_benchmark_mode": "STT_BENCHMARK_MODE",
-    "stt_primary_provider": "STT_PRIMARY_PROVIDER",
-    "stt_shadow_provider": "STT_SHADOW_PROVIDER",
-    "deepgram_stt_model": "DEEPGRAM_STT_MODEL",
-    "deepgram_interim_results": "DEEPGRAM_INTERIM_RESULTS",
-    "speechmatics_operating_point": "SPEECHMATICS_OPERATING_POINT",
-    "speechmatics_max_delay": "SPEECHMATICS_MAX_DELAY",
-    "soniox_stt_model": "SONIOX_STT_MODEL",
-    "soniox_max_endpoint_delay_ms": "SONIOX_MAX_ENDPOINT_DELAY_MS",
-    "benchmark_publish_events": "BENCHMARK_PUBLISH_EVENTS",
-    "benchmark_api_url": "BENCHMARK_API_URL",
-    "benchmark_storage_root": "BENCHMARK_STORAGE_ROOT",
-}
-
-BOOL_KEYS = {"benchmark_publish_events"}
-OPTIONAL_BOOL_KEYS = {"deepgram_interim_results"}
-FLOAT_KEYS = {"speechmatics_max_delay"}
-INT_KEYS = {"soniox_max_endpoint_delay_ms"}
 PROVIDERS = {"deepgram", "speechmatics", "soniox", "seniox"}
 MODES = {"production", "shadow", "comparison"}
 
 
 def load_settings() -> dict[str, Any]:
-    file_settings = _file_settings()
-    settings = DEFAULT_SETTINGS | file_settings
-    for key, env_key in ENV_KEYS.items():
-        env_value = os.getenv(env_key)
-        if key == "stt_primary_provider":
-            env_value = os.getenv("STT_PRIMARY_PROVIDER", os.getenv("STT_PROVIDER"))
-        if env_value is not None and key not in file_settings:
-            settings[key] = _coerce_value(key, env_value)
-    return sanitize_settings(settings)
+    return sanitize_settings(DEFAULT_SETTINGS | _file_settings())
 
 
 def save_settings(payload: dict[str, Any]) -> dict[str, Any]:
@@ -97,7 +69,6 @@ def sanitize_settings(settings: dict[str, Any]) -> dict[str, Any]:
         max(500, _int(sanitized["soniox_max_endpoint_delay_ms"], DEFAULT_SETTINGS["soniox_max_endpoint_delay_ms"])),
     )
     sanitized["benchmark_publish_events"] = _bool(sanitized["benchmark_publish_events"], DEFAULT_SETTINGS["benchmark_publish_events"])
-    sanitized["benchmark_api_url"] = _non_empty_string(sanitized["benchmark_api_url"], DEFAULT_SETTINGS["benchmark_api_url"])
     sanitized["benchmark_storage_root"] = _non_empty_string(sanitized["benchmark_storage_root"], DEFAULT_SETTINGS["benchmark_storage_root"])
     return sanitized
 
@@ -109,18 +80,6 @@ def _file_settings() -> dict[str, Any]:
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
     return data if isinstance(data, dict) else {}
-
-
-def _coerce_value(key: str, value: str) -> Any:
-    if key in BOOL_KEYS:
-        return _bool(value, DEFAULT_SETTINGS[key])
-    if key in OPTIONAL_BOOL_KEYS:
-        return _optional_bool(value)
-    if key in FLOAT_KEYS:
-        return _float(value, DEFAULT_SETTINGS[key])
-    if key in INT_KEYS:
-        return _int(value, DEFAULT_SETTINGS[key])
-    return value
 
 
 def _provider(value: Any, fallback: str) -> str:

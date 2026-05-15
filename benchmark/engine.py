@@ -10,6 +10,7 @@ from typing import Awaitable, Callable
 from stt.base_provider import STTTranscriptEvent
 
 from .metrics import MetricsRegistry
+from .settings import setting
 from .transcript_diff import compare_transcripts
 
 EventSink = Callable[[dict[str, object]], Awaitable[None]]
@@ -84,7 +85,7 @@ class BenchmarkEngine:
 
     async def persist_summary(self, call_id: str) -> None:
         state = self._calls[call_id]
-        call_dir = self._storage_root / call_id
+        call_dir = Path(str(setting("benchmark_storage_root", str(self._storage_root)))) / call_id
         call_dir.mkdir(parents=True, exist_ok=True)
         for provider, events in state.provider_events.items():
             (call_dir / f"{provider}.json").write_text(

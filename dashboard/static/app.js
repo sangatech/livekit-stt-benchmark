@@ -221,7 +221,6 @@ function renderSettings() {
     ${comboField("soniox_stt_model", "Soniox Model", settings.soniox_stt_model, sonioxModels)}
     ${numberField("soniox_max_endpoint_delay_ms", "Soniox Endpoint Ms", settings.soniox_max_endpoint_delay_ms, "100", "500", "3000")}
     ${checkboxField("benchmark_publish_events", "Publish Events", settings.benchmark_publish_events)}
-    ${textField("benchmark_api_url", "Benchmark API URL", settings.benchmark_api_url)}
     ${textField("benchmark_storage_root", "Storage Root", settings.benchmark_storage_root)}
   `;
 }
@@ -243,6 +242,16 @@ async function saveSettings() {
   state.settings = response.settings || {};
   status.textContent = "Saved. Applies to new calls.";
   renderSettings();
+}
+
+function openSettingsModal() {
+  document.getElementById("settingsModal").classList.remove("hidden");
+  document.getElementById("settingsModal").classList.add("flex");
+}
+
+function closeSettingsModal() {
+  document.getElementById("settingsModal").classList.add("hidden");
+  document.getElementById("settingsModal").classList.remove("flex");
 }
 
 function rebuildSelectedState(events) {
@@ -949,6 +958,14 @@ document.getElementById("refreshWer").addEventListener("click", async () => {
   await loadAllCallsWer();
 });
 document.getElementById("saveSettings").addEventListener("click", saveSettings);
+document.getElementById("openSettings").addEventListener("click", openSettingsModal);
+document.getElementById("closeSettings").addEventListener("click", closeSettingsModal);
+document.getElementById("settingsModal").addEventListener("click", (event) => {
+  if (event.target.id === "settingsModal") closeSettingsModal();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeSettingsModal();
+});
 
 loadSettings();
 loadCalls();
