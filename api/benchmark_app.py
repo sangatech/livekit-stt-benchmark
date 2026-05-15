@@ -7,12 +7,13 @@ from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi import HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.engine import make_url
 
 from benchmark.database import database_url
 from benchmark.engine import BenchmarkEngine
+from benchmark.reporting import build_call_report_data, render_call_report_html
 from benchmark.repository import BenchmarkRepository
 from benchmark.settings import load_settings, save_settings
 from stt.provider_manager import PROVIDERS
@@ -142,6 +143,25 @@ async def delete_transcript_events(call_id: str, payload: dict[str, Any]) -> dic
 @app.get("/api/benchmark/wer/summary")
 async def wer_summary() -> dict[str, object]:
     return repository.wer_summary()
+
+
+@app.get("/api/benchmark/calls/{call_id}/report")
+async def call_report(call_id: str) -> dict[str, object]:
+    detail = repository.call_detail(call_id)
+    turns = repository.call_turns(call_id)
+    if detail is None or turns is None:
+        raise HTTPException(status_code=404, detail="call not found")
+    return build_call_report_data(
+        call_detail=detail,
+        call_turns=turns,
+        all_calls_wer=repository.wer_summary(),
+    )
+
+
+@app.get("/api/benchmark/calls/{call_id}/report.html", response_class=HTMLResponse)
+async def call_report_html(call_id: str) -> HTMLResponse:
+    report = await call_report(call_id)
+    return HTMLResponse(render_call_report_html(report))
 
 
 @app.get("/api/settings")

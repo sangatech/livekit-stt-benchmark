@@ -254,6 +254,14 @@ function closeSettingsModal() {
   document.getElementById("settingsModal").classList.remove("flex");
 }
 
+function exportSelectedReport() {
+  if (!state.selectedCallId) {
+    window.alert("Select a call before exporting a report.");
+    return;
+  }
+  window.open(`/api/benchmark/calls/${encodeURIComponent(state.selectedCallId)}/report.html`, "_blank", "noopener");
+}
+
 function rebuildSelectedState(events) {
   resetSelectedState();
   state.events = [...events].map((event, index) => ({
@@ -958,6 +966,7 @@ document.getElementById("refreshWer").addEventListener("click", async () => {
   await loadAllCallsWer();
 });
 document.getElementById("saveSettings").addEventListener("click", saveSettings);
+document.getElementById("exportReport").addEventListener("click", exportSelectedReport);
 document.getElementById("openSettings").addEventListener("click", openSettingsModal);
 document.getElementById("closeSettings").addEventListener("click", closeSettingsModal);
 document.getElementById("settingsModal").addEventListener("click", (event) => {

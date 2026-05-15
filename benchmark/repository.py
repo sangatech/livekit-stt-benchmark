@@ -198,20 +198,37 @@ class BenchmarkRepository:
 
     def wer_summary(self) -> dict[str, object]:
         provider_totals: dict[str, dict[str, float]] = {}
-        reviewed_turns = 0
         reviewed_calls: set[str] = set()
         with self._factory() as session:
-            calls = session.query(BenchmarkCall).all()
-            for call in calls:
-                detail = self.call_turns(call.call_id)
-                if detail is None:
+            calls = {call.id: call for call in session.query(BenchmarkCall).all()}
+            references = {
+                reference.call_id_fk: reference.reference_transcript
+                for reference in session.query(BenchmarkReferenceTranscript).filter_by(turn_index=-1).all()
+            }
+            final_events = (
+                session.query(BenchmarkTranscriptEvent)
+                .filter_by(is_final=True)
+                .order_by(BenchmarkTranscriptEvent.timestamp.asc(), BenchmarkTranscriptEvent.id.asc())
+                .all()
+            )
+            transcripts_by_call: dict[int, dict[str, list[str]]] = {}
+            for event in final_events:
+                transcripts_by_call.setdefault(event.call_id_fk, {}).setdefault(event.provider, []).append(event.transcript)
+
+            for call_id_fk, reference in references.items():
+                call = calls.get(call_id_fk)
+                provider_transcripts = transcripts_by_call.get(call_id_fk, {})
+                if call is None:
                     continue
-                reference = str(detail.get("call_reference_transcript") or "").strip()
+                reference = str(reference or "").strip()
                 if not reference:
                     continue
-                reviewed_turns += 1
                 reviewed_calls.add(call.call_id)
-                for provider, stats in detail.get("call_provider_wer", {}).items():
+                for provider, segments in provider_transcripts.items():
+                    transcript = " ".join(segment.strip() for segment in segments if segment.strip())
+                    if not transcript:
+                        continue
+                    stats = wer_stats(reference, transcript)
                     if stats.get("wer") is None:
                         continue
                     totals = provider_totals.setdefault(
@@ -223,7 +240,7 @@ class BenchmarkRepository:
                     totals["turns"] += 1.0
         return {
             "reviewed_calls": len(reviewed_calls),
-            "reviewed_turns": reviewed_turns,
+            "reviewed_turns": len(reviewed_calls),
             "providers": {
                 provider: {
                     "wer": None if totals["reference_words"] == 0 else totals["edit_distance"] / totals["reference_words"],
