@@ -552,13 +552,13 @@ def _winner(providers: list[dict[str, Any]], key: str, *, lower: bool) -> str:
     if not comparable:
         return "n/a"
     comparable.sort(key=lambda provider: float(provider[key]), reverse=not lower)
-    return str(comparable[0]["provider"]).title()
+    return _provider_label(str(comparable[0]["provider"]))
 
 
 def _provider_row(provider: dict[str, Any]) -> str:
     return f"""
       <tr>
-        <td class="provider">{_e(str(provider.get("provider") or "").title())}</td>
+        <td class="provider">{_e(_provider_label(str(provider.get("provider") or "")))}</td>
         <td><span class="score">{_e(provider.get("score"))}</span></td>
         <td>{_percent(provider.get("call_wer"))}</td>
         <td>{_percent(provider.get("all_calls_wer"))}</td>
@@ -573,7 +573,7 @@ def _provider_row(provider: dict[str, Any]) -> str:
 def _overall_provider_row(provider: dict[str, Any]) -> str:
     return f"""
       <tr>
-        <td class="provider">{_e(str(provider.get("provider") or "").title())}</td>
+        <td class="provider">{_e(_provider_label(str(provider.get("provider") or "")))}</td>
         <td><span class="score">{_e(provider.get("score"))}</span></td>
         <td>{_percent(provider.get("all_calls_wer"))}</td>
         <td>{_ms(provider.get("avg_latency_ms"))}</td>
@@ -606,7 +606,7 @@ def _provider_metric_list(providers: list[dict[str, Any]], key: str, *, formatte
         return '<span class="muted">n/a</span>'
     lines = []
     for provider in sorted(providers, key=lambda item: str(item.get("provider") or "")):
-        name = str(provider.get("provider") or "unknown").title()
+        name = _provider_label(str(provider.get("provider") or "unknown"))
         value = provider.get(key)
         lines.append(
             f'<div class="metric-line"><span class="metric-provider">{_e(name)}</span><span class="metric-value">{formatter(value)}</span></div>'
@@ -618,7 +618,7 @@ def _provider_pills(providers: list[dict[str, Any]]) -> str:
     if not providers:
         return '<span class="muted">n/a</span>'
     pills = [
-        f'<span class="provider-pill">{_e(str(provider.get("provider") or "unknown").title())}</span>'
+        f'<span class="provider-pill">{_e(_provider_label(str(provider.get("provider") or "unknown")))}</span>'
         for provider in sorted(providers, key=lambda item: str(item.get("provider") or ""))
     ]
     return f'<div class="provider-pills">{"".join(pills)}</div>'
@@ -655,7 +655,15 @@ def _tile(label: str, value: str, hint: str) -> str:
 
 
 def _transcript_block(provider: str, text: str) -> str:
-    return f'<h3 style="margin-top:16px">{_e(provider.title())}</h3><div class="transcript">{_e(text or "No transcript available.")}</div>'
+    return f'<h3 style="margin-top:16px">{_e(_provider_label(provider))}</h3><div class="transcript">{_e(text or "No transcript available.")}</div>'
+
+
+def _provider_label(provider: str) -> str:
+    base, _, variant = provider.strip().partition(":")
+    base_label = base.replace("_", " ").replace("-", " ").title() or "Unknown"
+    if not variant:
+        return base_label
+    return f"{base_label} {variant}"
 
 
 def _percent(value: Any) -> str:

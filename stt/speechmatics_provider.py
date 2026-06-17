@@ -12,10 +12,14 @@ from .keyterms import load_session_keyterms
 
 class SpeechmaticsProvider(STTProvider):
     provider_name = "speechmatics"
+    base_provider_name = "speechmatics"
 
-    def __init__(self, *, call_id: str | None = None, room_id: str | None = None) -> None:
+    def __init__(self, *, call_id: str | None = None, room_id: str | None = None, role: str = "primary") -> None:
         super().__init__(call_id=call_id, room_id=room_id)
-        self.operating_point = str(setting("speechmatics_operating_point", os.getenv("SPEECHMATICS_OPERATING_POINT", "enhanced")))
+        default_operating_point = str(setting("speechmatics_operating_point", os.getenv("SPEECHMATICS_OPERATING_POINT", "enhanced")))
+        point_key = f"speechmatics_{role}_operating_point"
+        env_key = f"SPEECHMATICS_{role.upper()}_OPERATING_POINT"
+        self.operating_point = str(setting(point_key, os.getenv(env_key, default_operating_point)) or default_operating_point)
         self.max_delay = float(setting("speechmatics_max_delay", os.getenv("SPEECHMATICS_MAX_DELAY", "1.5")))
 
     def livekit_stt(self) -> Any:
@@ -30,7 +34,7 @@ class SpeechmaticsProvider(STTProvider):
         additional_vocab = [
             AdditionalVocabEntry(content=term)
             for term in load_session_keyterms(
-                provider=self.provider_name,
+                provider=self.base_provider_name,
                 model=self.operating_point,
             )
         ]

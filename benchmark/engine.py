@@ -79,6 +79,7 @@ class BenchmarkEngine:
             "room_id": state.room_id,
             "started_at": state.started_at,
             "duration_s": max(0.0, time.time() - state.started_at),
+            "providers": sorted(state.provider_events),
             "metrics": state.metrics.snapshot(),
             "comparison": self._comparison_snapshot(state),
         }

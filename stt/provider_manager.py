@@ -58,20 +58,33 @@ class STTProviderManager:
         if not secondary_name:
             secondary_name = "speechmatics" if primary_name == "deepgram" else "deepgram"
 
-        primary = self._build(primary_name)
-        secondary = None if mode == BenchmarkMode.PRODUCTION else self._build(secondary_name)
+        primary = self._build(primary_name, role="primary")
+        secondary = None if mode == BenchmarkMode.PRODUCTION else self._build(secondary_name, role="shadow")
+        _label_provider_variant(primary, role="primary")
+        if secondary is not None:
+            _label_provider_variant(secondary, role="shadow")
+            if primary.provider_name == secondary.provider_name:
+                _label_provider_variant(primary, role="primary", include_role=True)
+                _label_provider_variant(secondary, role="shadow", include_role=True)
         return ProviderSelection(mode=mode, primary=primary, secondary=secondary)
 
-    def _build(self, provider_name: str) -> STTProvider:
+    def _build(self, provider_name: str, *, role: str) -> STTProvider:
         provider_name = _normalize_provider_name(provider_name)
         try:
             provider_cls = PROVIDERS[provider_name]
         except KeyError as exc:
             supported = ", ".join(sorted(PROVIDERS))
             raise ValueError(f"Unknown STT provider: {provider_name}. Use one of: {supported}") from exc
-        return provider_cls(call_id=self.call_id, room_id=self.room_id)
+        return provider_cls(call_id=self.call_id, room_id=self.room_id, role=role)
 
 
 def _normalize_provider_name(provider_name: str) -> str:
     normalized = provider_name.strip().lower()
     return PROVIDER_ALIASES.get(normalized, normalized)
+
+
+def _label_provider_variant(provider: STTProvider, *, role: str, include_role: bool = False) -> None:
+    base_name = getattr(provider, "base_provider_name", provider.provider_name.split(":", 1)[0])
+    variant = getattr(provider, "model", None) or getattr(provider, "operating_point", None) or role
+    suffix = f"{role}-{variant}" if include_role else variant
+    provider.provider_name = f"{base_name}:{suffix}"

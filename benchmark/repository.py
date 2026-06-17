@@ -69,12 +69,24 @@ class BenchmarkRepository:
                 .limit(limit)
                 .all()
             )
+            call_ids = [call.id for call in calls]
+            events = (
+                session.query(BenchmarkTranscriptEvent)
+                .filter(BenchmarkTranscriptEvent.call_id_fk.in_(call_ids))
+                .all()
+                if call_ids
+                else []
+            )
+            providers_by_call: dict[int, set[str]] = {}
+            for event in events:
+                providers_by_call.setdefault(event.call_id_fk, set()).add(event.provider)
             return [
                 {
                     "call_id": call.call_id,
                     "room_id": call.room_id,
                     "started_at": call.started_at.timestamp() if call.started_at else None,
                     "ended_at": call.ended_at.timestamp() if call.ended_at else None,
+                    "providers": sorted(providers_by_call.get(call.id, set())),
                 }
                 for call in calls
             ]
@@ -95,6 +107,7 @@ class BenchmarkRepository:
                 "room_id": call.room_id,
                 "started_at": call.started_at.timestamp() if call.started_at else None,
                 "ended_at": call.ended_at.timestamp() if call.ended_at else None,
+                "providers": sorted({event.provider for event in events}),
                 "events": [_event_dict(event, call) for event in events],
             }
 
@@ -188,7 +201,10 @@ class BenchmarkRepository:
                     for value in (provider, primary_provider, secondary_provider)
                     if value
                 }
-                if required_providers and not required_providers.issubset(call_providers):
+                if required_providers and not all(
+                    any(_provider_matches(call_provider, required_provider) for call_provider in call_providers)
+                    for required_provider in required_providers
+                ):
                     continue
                 if reviewed_only and not str(call_references.get(-1, "")).strip():
                     continue
@@ -367,6 +383,12 @@ def _event_dict(event: BenchmarkTranscriptEvent, call: BenchmarkCall) -> dict[st
         "room_id": call.room_id,
         "raw": event.raw_event or {},
     }
+
+
+def _provider_matches(stored_provider: str, requested_provider: str) -> bool:
+    stored = stored_provider.strip().lower()
+    requested = requested_provider.strip().lower()
+    return stored == requested or stored.split(":", 1)[0] == requested
 
 
 def _call_level_transcripts(events: list[BenchmarkTranscriptEvent]) -> dict[str, str]:

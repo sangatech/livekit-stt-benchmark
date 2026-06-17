@@ -90,11 +90,15 @@ function handleEvent(payload) {
   }
   if (payload.type === "transcript") {
     const event = payload.event;
+    const existingCall = state.calls.get(event.call_id) || {};
+    const providers = Array.from(new Set([...(existingCall.providers || []), event.provider].filter(Boolean))).sort();
     state.calls.set(event.call_id, {
+      ...existingCall,
       call_id: event.call_id,
       room_id: event.room_id,
       timestamp: event.timestamp,
       ingest_order: state.ingestCounter,
+      providers,
     });
     if (!state.selectedCallId) state.selectedCallId = event.call_id;
     if (event.call_id === state.selectedCallId) {
@@ -220,22 +224,79 @@ function renderSettings() {
   const settings = state.settings || {};
   const providers = state.settingsMeta?.providers || ["deepgram", "speechmatics", "soniox"];
   const modes = state.settingsMeta?.modes || ["production", "shadow", "comparison"];
-  const deepgramModels = uniqueOptions([settings.deepgram_stt_model, ...(state.settingsMeta?.deepgram_models || [])]);
-  const sonioxModels = uniqueOptions([settings.soniox_stt_model, ...(state.settingsMeta?.soniox_models || [])]);
+  const primaryProvider = normalizeProviderName(settings.stt_primary_provider);
+  const shadowProvider = normalizeProviderName(settings.stt_shadow_provider);
+  const deepgramModels = uniqueOptions([
+    settings.deepgram_primary_stt_model,
+    settings.deepgram_shadow_stt_model,
+    settings.deepgram_stt_model,
+    ...(state.settingsMeta?.deepgram_models || []),
+  ]);
+  const sonioxModels = uniqueOptions([
+    settings.soniox_primary_stt_model,
+    settings.soniox_shadow_stt_model,
+    settings.soniox_stt_model,
+    ...(state.settingsMeta?.soniox_models || []),
+  ]);
   const speechmaticsPoints = state.settingsMeta?.speechmatics_operating_points || ["enhanced", "standard"];
+  const providerFields = [
+    ...settingsFieldsForRole("primary", primaryProvider, settings, { deepgramModels, sonioxModels, speechmaticsPoints }),
+    ...settingsFieldsForRole("shadow", shadowProvider, settings, { deepgramModels, sonioxModels, speechmaticsPoints }),
+    primaryProvider === "speechmatics" || shadowProvider === "speechmatics"
+      ? numberField("speechmatics_max_delay", "Speechmatics Max Delay", settings.speechmatics_max_delay, "0.1", "0")
+      : "",
+  ].join("");
 
   document.getElementById("settingsPanel").innerHTML = `
     ${selectField("stt_benchmark_mode", "Mode", settings.stt_benchmark_mode, modes)}
     ${selectField("stt_primary_provider", "Primary", settings.stt_primary_provider, providers)}
-    ${selectField("stt_shadow_provider", "Shadow", settings.stt_shadow_provider, providers)}
-    ${comboField("deepgram_stt_model", "Deepgram Model", settings.deepgram_stt_model, deepgramModels)}
-    ${selectField("speechmatics_operating_point", "Speechmatics Quality", settings.speechmatics_operating_point, speechmaticsPoints)}
-    ${numberField("speechmatics_max_delay", "Speechmatics Max Delay", settings.speechmatics_max_delay, "0.1", "0")}
-    ${comboField("soniox_stt_model", "Soniox Model", settings.soniox_stt_model, sonioxModels)}
-    ${numberField("soniox_max_endpoint_delay_ms", "Soniox Endpoint Ms", settings.soniox_max_endpoint_delay_ms, "100", "500", "3000")}
+    ${selectField("stt_shadow_provider", "Secondary", settings.stt_shadow_provider, providers)}
+    ${providerFields}
     ${checkboxField("benchmark_publish_events", "Publish Events", settings.benchmark_publish_events)}
     ${textField("benchmark_storage_root", "Storage Root", settings.benchmark_storage_root)}
   `;
+  bindSettingsProviderControls();
+}
+
+function settingsFieldsForRole(role, provider, settings, options) {
+  const labelRole = role === "primary" ? "Primary" : "Secondary";
+  if (provider === "deepgram") {
+    return [
+      comboField(`deepgram_${role}_stt_model`, `Deepgram ${labelRole} Model`, settings[`deepgram_${role}_stt_model`], options.deepgramModels),
+    ];
+  }
+  if (provider === "soniox") {
+    return [
+      comboField(`soniox_${role}_stt_model`, `Soniox ${labelRole} Model`, settings[`soniox_${role}_stt_model`], options.sonioxModels),
+    ];
+  }
+  if (provider === "speechmatics") {
+    return [
+      selectField(`speechmatics_${role}_operating_point`, `Speechmatics ${labelRole} Quality`, settings[`speechmatics_${role}_operating_point`], options.speechmaticsPoints),
+    ];
+  }
+  return [];
+}
+
+function bindSettingsProviderControls() {
+  ["stt_primary_provider", "stt_shadow_provider"].forEach((name) => {
+    const input = document.querySelector(`[data-setting="${name}"]`);
+    if (!input) return;
+    input.addEventListener("change", () => {
+      state.settings = { ...(state.settings || {}), ...collectSettingsDraft() };
+      renderSettings();
+    });
+  });
+}
+
+function collectSettingsDraft() {
+  const form = document.getElementById("settingsPanel");
+  const payload = {};
+  form.querySelectorAll("[data-setting]").forEach((input) => {
+    if (input.type === "checkbox") payload[input.dataset.setting] = input.checked;
+    else payload[input.dataset.setting] = input.value;
+  });
+  return payload;
 }
 
 function renderReportFilters() {
@@ -255,12 +316,7 @@ function renderReportFilters() {
 }
 
 async function saveSettings() {
-  const form = document.getElementById("settingsPanel");
-  const payload = {};
-  form.querySelectorAll("[data-setting]").forEach((input) => {
-    if (input.type === "checkbox") payload[input.dataset.setting] = input.checked;
-    else payload[input.dataset.setting] = input.value;
-  });
+  const payload = { ...(state.settings || {}), ...collectSettingsDraft() };
   const status = document.getElementById("settingsStatus");
   status.textContent = "saving";
   const response = await fetchJson("/api/settings", {
@@ -384,6 +440,7 @@ function renderCalls() {
       <button data-call-id="${escapeAttr(call.call_id)}" class="call-button w-full rounded border ${selected ? "border-sky-500 bg-sky-950/40" : "border-zinc-800 bg-zinc-950"} p-2 text-left hover:border-zinc-600">
         <div class="break-words font-medium">${escapeHtml(call.call_id || "unknown")}</div>
         <div class="break-words text-xs text-zinc-500">${escapeHtml(formatDateTime(call.started_at || call.timestamp))}</div>
+        ${call.providers?.length ? `<div class="mt-2 flex flex-wrap gap-1">${call.providers.map((provider) => `<span class="rounded bg-zinc-900 px-1.5 py-0.5 text-xs text-zinc-300">${escapeHtml(providerLabel(provider))}</span>`).join("")}</div>` : ""}
       </button>
     `;
   }).join("") || `<div class="text-zinc-500">No calls yet</div>`;
@@ -816,7 +873,7 @@ function timelineGroupCard(group) {
   card.innerHTML = `
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="font-medium">${escapeHtml(group.provider)}</span>
+        <span class="font-medium">${escapeHtml(providerLabel(group.provider))}</span>
         <span class="rounded bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300">${group.events.length} events</span>
         <span class="rounded ${group.isFinal ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-300"} px-2 py-0.5 text-xs">${group.isFinal ? "finalized" : "in progress"}</span>
       </div>
@@ -999,7 +1056,13 @@ function providerNames() {
 
 function providerMeta(provider) {
   const normalized = String(provider || "").toLowerCase();
-  return PROVIDER_META[normalized] || {
+  const [baseProvider, variant] = normalized.split(":", 2);
+  const baseMeta = PROVIDER_META[baseProvider];
+  return baseMeta && variant ? {
+    label: `${baseMeta.label} ${variant}`,
+    color: colorForProvider(normalized),
+    borderClass: baseMeta.borderClass,
+  } : PROVIDER_META[normalized] || {
     label: titleCaseProvider(normalized || "unknown"),
     color: colorForProvider(normalized),
     borderClass: "border-violet-900/80",
@@ -1014,8 +1077,13 @@ function providerOrValueLabel(value) {
   return PROVIDER_META[String(value || "").toLowerCase()] ? providerLabel(value) : titleCaseProvider(value);
 }
 
+function normalizeProviderName(provider) {
+  const normalized = String(provider || "").trim().toLowerCase();
+  return normalized === "seniox" ? "soniox" : normalized;
+}
+
 function titleCaseProvider(provider) {
-  return String(provider || "unknown").replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
+  return String(provider || "unknown").replace(/[-_:]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function colorForProvider(provider) {

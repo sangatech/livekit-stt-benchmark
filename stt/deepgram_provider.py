@@ -12,10 +12,14 @@ from .keyterms import load_session_keyterms
 
 class DeepgramProvider(STTProvider):
     provider_name = "deepgram"
+    base_provider_name = "deepgram"
 
-    def __init__(self, *, call_id: str | None = None, room_id: str | None = None) -> None:
+    def __init__(self, *, call_id: str | None = None, room_id: str | None = None, role: str = "primary") -> None:
         super().__init__(call_id=call_id, room_id=room_id)
-        self.model = str(setting("deepgram_stt_model", os.getenv("DEEPGRAM_STT_MODEL", "nova-2")))
+        default_model = str(setting("deepgram_stt_model", os.getenv("DEEPGRAM_STT_MODEL", "nova-2")))
+        model_key = f"deepgram_{role}_stt_model"
+        env_key = f"DEEPGRAM_{role.upper()}_STT_MODEL"
+        self.model = str(setting(model_key, os.getenv(env_key, default_model)) or default_model)
 
     def livekit_stt(self) -> Any:
         from livekit.plugins import deepgram
@@ -24,7 +28,7 @@ class DeepgramProvider(STTProvider):
         interim_default = "true" if benchmark_mode in {"shadow", "comparison"} else "false"
         configured_interim = setting("deepgram_interim_results", os.getenv("DEEPGRAM_INTERIM_RESULTS", interim_default))
         interim_results = interim_default.lower() == "true" if configured_interim is None else bool(configured_interim)
-        keyterms = load_session_keyterms(provider=self.provider_name, model=self.model)
+        keyterms = load_session_keyterms(provider=self.base_provider_name, model=self.model)
         return deepgram.STT(
             model=self.model,
             language="en",

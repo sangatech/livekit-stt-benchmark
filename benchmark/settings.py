@@ -16,10 +16,16 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "stt_primary_provider": "deepgram",
     "stt_shadow_provider": "speechmatics",
     "deepgram_stt_model": "nova-2",
+    "deepgram_primary_stt_model": "nova-2",
+    "deepgram_shadow_stt_model": "nova-3",
     "deepgram_interim_results": None,
     "speechmatics_operating_point": "enhanced",
+    "speechmatics_primary_operating_point": "enhanced",
+    "speechmatics_shadow_operating_point": "standard",
     "speechmatics_max_delay": 1.5,
     "soniox_stt_model": "stt-rt-v4",
+    "soniox_primary_stt_model": "stt-rt-v4",
+    "soniox_shadow_stt_model": "stt-rt-v4",
     "soniox_max_endpoint_delay_ms": 500,
     "benchmark_publish_events": True,
     "benchmark_storage_root": "calls",
@@ -52,18 +58,42 @@ def sanitize_settings(settings: dict[str, Any]) -> dict[str, Any]:
     sanitized["stt_benchmark_mode"] = _choice(sanitized["stt_benchmark_mode"], MODES, DEFAULT_SETTINGS["stt_benchmark_mode"])
     sanitized["stt_primary_provider"] = _provider(sanitized["stt_primary_provider"], DEFAULT_SETTINGS["stt_primary_provider"])
     sanitized["stt_shadow_provider"] = _provider(sanitized["stt_shadow_provider"], DEFAULT_SETTINGS["stt_shadow_provider"])
-    if sanitized["stt_shadow_provider"] == sanitized["stt_primary_provider"]:
-        sanitized["stt_shadow_provider"] = "speechmatics" if sanitized["stt_primary_provider"] == "deepgram" else "deepgram"
 
     sanitized["deepgram_stt_model"] = _non_empty_string(sanitized["deepgram_stt_model"], DEFAULT_SETTINGS["deepgram_stt_model"])
+    sanitized["deepgram_primary_stt_model"] = _non_empty_string(
+        sanitized["deepgram_primary_stt_model"],
+        sanitized["deepgram_stt_model"],
+    )
+    sanitized["deepgram_shadow_stt_model"] = _non_empty_string(
+        sanitized["deepgram_shadow_stt_model"],
+        sanitized["deepgram_stt_model"],
+    )
     sanitized["deepgram_interim_results"] = _optional_bool(sanitized["deepgram_interim_results"])
     sanitized["speechmatics_operating_point"] = _choice(
         sanitized["speechmatics_operating_point"],
         {"enhanced", "standard"},
         DEFAULT_SETTINGS["speechmatics_operating_point"],
     )
+    sanitized["speechmatics_primary_operating_point"] = _choice(
+        sanitized["speechmatics_primary_operating_point"],
+        {"enhanced", "standard"},
+        sanitized["speechmatics_operating_point"],
+    )
+    sanitized["speechmatics_shadow_operating_point"] = _choice(
+        sanitized["speechmatics_shadow_operating_point"],
+        {"enhanced", "standard"},
+        sanitized["speechmatics_operating_point"],
+    )
     sanitized["speechmatics_max_delay"] = max(0.0, _float(sanitized["speechmatics_max_delay"], DEFAULT_SETTINGS["speechmatics_max_delay"]))
     sanitized["soniox_stt_model"] = _non_empty_string(sanitized["soniox_stt_model"], DEFAULT_SETTINGS["soniox_stt_model"])
+    sanitized["soniox_primary_stt_model"] = _non_empty_string(
+        sanitized["soniox_primary_stt_model"],
+        sanitized["soniox_stt_model"],
+    )
+    sanitized["soniox_shadow_stt_model"] = _non_empty_string(
+        sanitized["soniox_shadow_stt_model"],
+        sanitized["soniox_stt_model"],
+    )
     sanitized["soniox_max_endpoint_delay_ms"] = min(
         3000,
         max(500, _int(sanitized["soniox_max_endpoint_delay_ms"], DEFAULT_SETTINGS["soniox_max_endpoint_delay_ms"])),

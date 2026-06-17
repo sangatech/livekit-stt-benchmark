@@ -12,16 +12,20 @@ from .keyterms import load_session_keyterms
 
 class SonioxProvider(STTProvider):
     provider_name = "soniox"
+    base_provider_name = "soniox"
 
-    def __init__(self, *, call_id: str | None = None, room_id: str | None = None) -> None:
+    def __init__(self, *, call_id: str | None = None, room_id: str | None = None, role: str = "primary") -> None:
         super().__init__(call_id=call_id, room_id=room_id)
-        self.model = str(setting("soniox_stt_model", os.getenv("SONIOX_STT_MODEL", "stt-rt-v4")))
+        default_model = str(setting("soniox_stt_model", os.getenv("SONIOX_STT_MODEL", "stt-rt-v4")))
+        model_key = f"soniox_{role}_stt_model"
+        env_key = f"SONIOX_{role.upper()}_STT_MODEL"
+        self.model = str(setting(model_key, os.getenv(env_key, default_model)) or default_model)
         self.max_endpoint_delay_ms = int(setting("soniox_max_endpoint_delay_ms", os.getenv("SONIOX_MAX_ENDPOINT_DELAY_MS", "500")))
 
     def livekit_stt(self) -> Any:
         from livekit.plugins import soniox
 
-        keyterms = load_session_keyterms(provider=self.provider_name, model=self.model)
+        keyterms = load_session_keyterms(provider=self.base_provider_name, model=self.model)
         context = soniox.ContextObject(terms=keyterms) if keyterms else None
         return soniox.STT(
             api_key=os.getenv("SONIOX_API_KEY") or os.getenv("SENIOX_API_KEY"),
