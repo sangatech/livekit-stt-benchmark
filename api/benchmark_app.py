@@ -80,11 +80,19 @@ async def index() -> FileResponse:
 
 
 @app.get("/api/benchmark/calls")
-async def calls() -> list[dict[str, object]]:
-    calls_by_id = {call["call_id"]: call for call in repository.list_calls(limit=100)}
+async def calls(limit: int = 50, offset: int = 0) -> dict[str, object]:
+    calls_list = repository.list_calls(limit=limit, offset=offset)
+    calls_by_id = {call["call_id"]: call for call in calls_list}
     for call in engine.active_calls():
-        calls_by_id[call["call_id"]] = {**calls_by_id.get(call["call_id"], {}), **call}
-    return list(calls_by_id.values())
+        if offset == 0:
+            calls_by_id[call["call_id"]] = {**calls_by_id.get(call["call_id"], {}), **call}
+    total_calls = repository.count_calls()
+    return {
+        "calls": list(calls_by_id.values()),
+        "total": total_calls,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 @app.get("/api/benchmark/calls/{call_id}")

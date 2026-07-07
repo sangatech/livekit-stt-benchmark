@@ -61,12 +61,13 @@ class BenchmarkRepository:
                 call.ended_at = datetime.now(timezone.utc)
                 session.commit()
 
-    def list_calls(self, *, limit: int = 100) -> list[dict[str, object]]:
+    def list_calls(self, *, limit: int = 100, offset: int = 0) -> list[dict[str, object]]:
         with self._factory() as session:
             calls = (
                 session.query(BenchmarkCall)
                 .order_by(BenchmarkCall.started_at.desc())
                 .limit(limit)
+                .offset(offset)
                 .all()
             )
             call_ids = [call.id for call in calls]
@@ -90,6 +91,10 @@ class BenchmarkRepository:
                 }
                 for call in calls
             ]
+
+    def count_calls(self) -> int:
+        with self._factory() as session:
+            return session.query(BenchmarkCall).count()
 
     def call_detail(self, call_id: str) -> dict[str, object] | None:
         with self._factory() as session:

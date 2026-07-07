@@ -29,6 +29,9 @@ const state = {
   settings: null,
   settingsMeta: null,
   reportFilters: loadSavedReportFilters(),
+  callsLimit: 50,
+  loadedCount: 0,
+  totalCalls: 0,
 };
 
 const PROVIDER_META = {
@@ -132,11 +135,24 @@ function applyEventToSelectedCall(event) {
   renderChart();
 }
 
-async function loadCalls() {
-  const calls = await fetch("/api/benchmark/calls").then((response) => response.json());
-  calls.forEach((call) => state.calls.set(call.call_id, call));
-  if (!state.selectedCallId && calls.length) {
-    await selectCall(calls[0].call_id);
+async function loadCalls(append = false) {
+  const limit = state.callsLimit || 50;
+  const offset = append ? state.loadedCount : 0;
+  const response = await fetch(`/api/benchmark/calls?limit=${limit}&offset=${offset}`).then((res) => res.json());
+  
+  if (!append) {
+    state.calls.clear();
+    state.loadedCount = 0;
+  }
+  
+  const fetchedCalls = response.calls || [];
+  fetchedCalls.forEach((call) => state.calls.set(call.call_id, call));
+  
+  state.totalCalls = response.total || 0;
+  state.loadedCount = state.calls.size;
+  
+  if (!state.selectedCallId && fetchedCalls.length) {
+    await selectCall(fetchedCalls[0].call_id);
   }
   renderCalls();
 }
@@ -431,10 +447,15 @@ function updateProviderStatsFromEvent(event) {
 }
 
 function renderCalls() {
+  const callsContainer = document.getElementById("calls");
+  if (!callsContainer) return;
+
+  const scrollTop = callsContainer.scrollTop;
+
   const calls = Array.from(state.calls.values())
-    .sort((a, b) => (b.started_at || b.timestamp || 0) - (a.started_at || a.timestamp || 0))
-    .slice(0, 100);
-  document.getElementById("calls").innerHTML = calls.map((call) => {
+    .sort((a, b) => (b.started_at || b.timestamp || 0) - (a.started_at || a.timestamp || 0));
+
+  let html = calls.map((call) => {
     const selected = call.call_id === state.selectedCallId;
     return `
       <button data-call-id="${escapeAttr(call.call_id)}" class="call-button w-full rounded border ${selected ? "border-sky-500 bg-sky-950/40" : "border-zinc-800 bg-zinc-950"} p-2 text-left hover:border-zinc-600">
@@ -445,9 +466,29 @@ function renderCalls() {
     `;
   }).join("") || `<div class="text-zinc-500">No calls yet</div>`;
 
+  if (state.totalCalls > state.loadedCount) {
+    html += `
+      <button id="loadMoreCalls" class="w-full mt-2 rounded border border-zinc-800 bg-zinc-900 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800 hover:border-zinc-700">
+        Load More (${state.totalCalls - state.loadedCount} remaining)
+      </button>
+    `;
+  }
+
+  callsContainer.innerHTML = html;
+  callsContainer.scrollTop = scrollTop;
+
   document.querySelectorAll(".call-button").forEach((button) => {
     button.addEventListener("click", () => selectCall(button.dataset.callId));
   });
+
+  const loadMoreBtn = document.getElementById("loadMoreCalls");
+  if (loadMoreBtn) {
+    loadMoreBtn.addEventListener("click", async () => {
+      loadMoreBtn.disabled = true;
+      loadMoreBtn.textContent = "Loading...";
+      await loadCalls(true);
+    });
+  }
 }
 
 function renderProviderStats() {
